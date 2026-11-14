@@ -5,6 +5,7 @@ import {
   eveningReading,
   formatForecastLine,
   mergeForecasts,
+  usesSunIcon,
   weatherCredit,
   weatherEmoji,
 } from './weather.js';
@@ -19,6 +20,7 @@ const thursday = {
   temperature_2m: [22.4, 23.6, 22.1, null],
   precipitation_probability: [40, 59.6, 70, null],
   weather_code: [2, 80, 61, null],
+  is_day: [0, 0, 0, 0],
 };
 
 test('Brookfield sits in the western Brisbane suburb', () => {
@@ -29,7 +31,9 @@ test('Brookfield sits in the western Brisbane suburb', () => {
 test('formats the 8pm line with a rounded temperature and rain chance', () => {
   const reading = eveningReading(thursday, '2026-11-19');
   assert.equal(reading.hour, 20);
-  assert.equal(formatForecastLine(reading), '🌦️ 8pm: 60% chance of rain, 24°');
+  assert.equal(reading.isDay, 0);
+  assert.equal(formatForecastLine(reading), '🌧️ 8pm: 60% chance of rain, 24°');
+  assert.equal(usesSunIcon(formatForecastLine(reading).split(' ')[0]), false);
 });
 
 test('a date with no evening temperature is left out', () => {
@@ -47,7 +51,7 @@ test('uses 7pm when 8pm is missing, and still labels the game time', () => {
   };
   const reading = eveningReading(hourly, '2026-11-19');
   assert.equal(reading.hour, 19);
-  assert.equal(formatForecastLine(reading), '🌤️ 8pm: 10% chance of rain, 21°');
+  assert.equal(formatForecastLine(reading), '☁️ 8pm: 10% chance of rain, 21°');
 });
 
 test('drops the rain chance when the model has no percentage', () => {
@@ -55,19 +59,34 @@ test('drops the rain chance when the model has no percentage', () => {
     temperature: 18.4,
     precipitationProbability: null,
     weatherCode: 0,
-  }), '☀️ 8pm: 18°');
+  }), '🌙 8pm: 18°');
   assert.equal(formatForecastLine(null), null);
   assert.equal(formatForecastLine({ temperature: null, weatherCode: 0 }), null);
 });
 
-test('picks an emoji from the weather code', () => {
-  assert.equal(weatherEmoji(0), '☀️');
-  assert.equal(weatherEmoji(3), '☁️');
-  assert.equal(weatherEmoji(45), '🌫️');
-  assert.equal(weatherEmoji(61), '🌧️');
-  assert.equal(weatherEmoji(95), '⛈️');
+test('8pm uses night icons, and is_day can still pick a daytime icon', () => {
+  assert.equal(weatherEmoji(0, 0), '🌙');
+  assert.equal(weatherEmoji(0), '🌙');
+  assert.equal(weatherEmoji(1, 0), '☁️');
+  assert.equal(weatherEmoji(2, 0), '☁️');
+  assert.equal(weatherEmoji(3, 0), '☁️');
+  assert.equal(weatherEmoji(45, 0), '🌫️');
+  assert.equal(weatherEmoji(51, 0), '🌧️');
+  assert.equal(weatherEmoji(61, 0), '🌧️');
+  assert.equal(weatherEmoji(80, 0), '🌧️');
+  assert.equal(weatherEmoji(95, 0), '⛈️');
   assert.equal(weatherEmoji(71), '❄️');
   assert.equal(weatherEmoji(null), '🌡️');
+  assert.equal(weatherEmoji(0, 1), '☀️');
+  assert.equal(weatherEmoji(1, 1), '🌤️');
+  assert.equal(weatherEmoji(2, 1), '⛅');
+  assert.equal(formatForecastLine({
+    temperature: 22,
+    precipitationProbability: 0,
+    weatherCode: 0,
+    isDay: 1,
+    hour: 20,
+  }), '🌙 8pm: 0% chance of rain, 22°');
 });
 
 test('falls back to the default forecast when BOM has no hourly values', () => {
@@ -85,11 +104,11 @@ test('falls back to the default forecast when BOM has no hourly values', () => {
   };
   const merged = mergeForecasts(bom, best, ['2026-11-19', '2026-11-26', '2026-12-03']);
   assert.deepEqual(merged.lines, {
-    '2026-11-19': '🌤️ 8pm: 2% chance of rain, 19°',
+    '2026-11-19': '☁️ 8pm: 2% chance of rain, 19°',
   });
   assert.equal(merged.sources['2026-11-19'], 'best_match');
   assert.equal(merged.model, 'best_match');
-  assert.equal(weatherCredit(merged.model), 'Weather: Open-Meteo, Brookfield');
+  assert.equal(weatherCredit(merged.model), 'Updates automatically · Open-Meteo, Brookfield');
 });
 
 test('keeps BOM for a date that has an evening temperature', () => {
@@ -110,5 +129,5 @@ test('keeps BOM for a date that has an evening temperature', () => {
   assert.equal(merged.sources['2026-11-19'], 'bom_access_global');
   assert.equal(merged.sources['2026-11-26'], 'best_match');
   assert.equal(merged.model, 'bom_access_global+best_match');
-  assert.equal(weatherCredit(merged.model), 'Weather: Open-Meteo / BOM model, Brookfield');
+  assert.equal(weatherCredit(merged.model), 'Updates automatically · Open-Meteo / BOM model, Brookfield');
 });

@@ -10,16 +10,19 @@ export const FORECAST_DAYS = 7;
 
 const EVENING_HOURS = [20, 19, 21];
 
-export function weatherEmoji(code) {
+const SUN_EMOJI = ['☀️', '🌤️', '⛅', '🌦️'];
+
+export function weatherEmoji(code, isDay) {
   if (code == null || code === '') return '🌡️';
   const n = Number(code);
   if (!Number.isFinite(n)) return '🌡️';
-  if (n === 0) return '☀️';
-  if (n === 1) return '🌤️';
-  if (n === 2) return '⛅';
+  // Missing is_day, or 0, means night. 8pm in Brookfield is after dark.
+  const day = isDay === 1 || isDay === true;
+  if (n === 0) return day ? '☀️' : '🌙';
+  if (n === 1 || n === 2) return day ? (n === 1 ? '🌤️' : '⛅') : '☁️';
   if (n === 3) return '☁️';
   if (n === 45 || n === 48) return '🌫️';
-  if (n === 51 || n === 53 || n === 55 || n === 80 || n === 81 || n === 82) return '🌦️';
+  if (n === 51 || n === 53 || n === 55 || n === 80 || n === 81 || n === 82) return day ? '🌦️' : '🌧️';
   if (n === 56 || n === 57 || (n >= 61 && n <= 67)) return '🌧️';
   if (n >= 71 && n <= 77) return '❄️';
   if (n === 85 || n === 86) return '🌨️';
@@ -27,13 +30,21 @@ export function weatherEmoji(code) {
   return '🌡️';
 }
 
-// One short line, e.g. "🌦️ 8pm: 60% chance of rain, 24°".
+export function usesSunIcon(emoji) {
+  return SUN_EMOJI.includes(emoji);
+}
+
+// One short line, e.g. "🌧️ 8pm: 60% chance of rain, 24°".
 // Returns null when there is no temperature to show.
 export function formatForecastLine(reading) {
   if (!reading || reading.temperature == null || reading.temperature === '') return null;
   if (!Number.isFinite(Number(reading.temperature))) return null;
   const temp = Math.round(Number(reading.temperature));
-  const emoji = weatherEmoji(reading.weatherCode);
+  const hour = Number(reading.hour);
+  const evening = !Number.isFinite(hour) || hour >= 18 || hour < 6;
+  // Trust is_day for a daytime hour. The 8pm line never uses a sun.
+  const isDay = evening ? 0 : reading.isDay;
+  const emoji = weatherEmoji(reading.weatherCode, isDay);
   const pop = reading.precipitationProbability;
   if (pop == null || pop === '' || !Number.isFinite(Number(pop))) {
     return `${emoji} 8pm: ${temp}°`;
@@ -53,6 +64,7 @@ export function eveningReading(hourly, ymd) {
   const temps = series(hourly, 'temperature_2m');
   const pops = series(hourly, 'precipitation_probability');
   const codes = series(hourly, 'weather_code').length ? series(hourly, 'weather_code') : series(hourly, 'weathercode');
+  const daylight = series(hourly, 'is_day');
   for (const hour of EVENING_HOURS) {
     const stamp = `${ymd}T${String(hour).padStart(2, '0')}:00`;
     const index = times.indexOf(stamp);
@@ -61,10 +73,12 @@ export function eveningReading(hourly, ymd) {
     if (temperature == null || temperature === '' || !Number.isFinite(Number(temperature))) continue;
     const pop = pops[index];
     const code = codes[index];
+    const isDay = daylight[index];
     return {
       temperature: Number(temperature),
       precipitationProbability: pop == null || pop === '' ? null : Number(pop),
       weatherCode: code == null || code === '' ? null : Number(code),
+      isDay: isDay == null || isDay === '' ? null : Number(isDay),
       hour,
     };
   }
@@ -99,6 +113,8 @@ export function mergeForecasts(bomHourly, bestHourly, dates) {
 
 export function weatherCredit(model) {
   if (!model) return '';
-  if (String(model).includes('bom_access_global')) return 'Weather: Open-Meteo / BOM model, Brookfield';
-  return 'Weather: Open-Meteo, Brookfield';
+  const source = String(model).includes('bom_access_global')
+    ? 'Open-Meteo / BOM model, Brookfield'
+    : 'Open-Meteo, Brookfield';
+  return `Updates automatically · ${source}`;
 }

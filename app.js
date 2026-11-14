@@ -122,7 +122,7 @@ async function load() {
 
 const WEATHER_OK_MS = 60 * 60 * 1000;
 const WEATHER_FAIL_MS = 15 * 60 * 1000;
-const WEATHER_KEY = 'tennis.weather';
+const WEATHER_KEY = 'tennis.weather.v2';
 
 function weatherFresh() {
   if (!weather.checkedAt) return false;
@@ -160,7 +160,7 @@ function forecastUrl(model) {
   const params = new URLSearchParams({
     latitude: String(BROOKFIELD.latitude),
     longitude: String(BROOKFIELD.longitude),
-    hourly: 'temperature_2m,precipitation_probability,weather_code',
+    hourly: 'temperature_2m,precipitation_probability,weather_code,is_day',
     timezone: 'Australia/Brisbane',
     forecast_days: String(FORECAST_DAYS),
   });
@@ -358,19 +358,19 @@ function mainHtml(view) {
       <p class="meter-text">${esc(card.meter.text)}</p>
     </div>` : '';
     const gameOn = card.meter?.gameOn ? '<div class="banner in big">🎾 Game on!</div>' : '';
+    const note = weather.lines[card.id] ? weatherCredit(weather.model) : '';
     const forecast = weather.lines[card.id]
-      ? `<p class="weather">${esc(weather.lines[card.id])}</p>`
+      ? `<div class="weather-block">
+          <p class="weather">${esc(weather.lines[card.id])}</p>
+          ${note ? `<p class="weather-note" data-weather-model="${esc(weather.model)}">${esc(note)}</p>` : ''}
+        </div>`
       : '';
     return `<section class="card${index === 0 ? ' next' : ''}${card.meter?.gameOn ? ' game-on' : ''}">
       <h2>${esc(card.title)}</h2>
       ${forecast}${gameOn}${meter}${you}${prompt}${banner}${controls}${lines}${guestList}${guestForm}
     </section>`;
   }).join('');
-  const credit = Object.keys(weather.lines).length ? weatherCredit(weather.model) : '';
-  const note = credit
-    ? `<p class="weather-credit" data-weather-model="${esc(weather.model)}">${esc(credit)}</p>`
-    : '';
-  return `<main class="wrap with-tabs">${header({ refresh: false })}${cards}${note}</main>${tabs()}`;
+  return `<main class="wrap with-tabs">${header({ refresh: false })}${cards}</main>${tabs()}`;
 }
 
 function historyHtml(view) {
