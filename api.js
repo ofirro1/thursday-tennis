@@ -47,14 +47,6 @@ function clientIp(request) {
   return header.slice(0, 80);
 }
 
-function cleanName(input) {
-  const name = String(input || '').trim().replace(/\s+/g, ' ');
-  if (!/^[A-Za-z]+(?:[ '\-][A-Za-z]+)*$/.test(name) || name.length > 20) {
-    throw new HttpError(400, 'Use a name like Mik. Letters only.');
-  }
-  return name;
-}
-
 function cleanReason(input) {
   const reason = String(input || '').replace(/[\u0000-\u001f]/g, '').trim();
   if (reason.length > 60) throw new HttpError(400, 'Keep the reason short.');
@@ -117,23 +109,6 @@ async function login(body, store, bootstrapPin, request, now) {
   const expiresAt = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString();
   await store.saveSession(token, expiresAt);
   return { ok: true, token };
-}
-
-async function saveNames(body, store) {
-  const state = await store.getState();
-  const names = Object.fromEntries(state.players.map((player) => [player.id, player.name]));
-  const updates = Array.isArray(body.names) ? body.names : [];
-  if (!updates.length) throw new HttpError(400, 'Type the names, then save.');
-  for (const update of updates) {
-    if (!Object.prototype.hasOwnProperty.call(names, update.id)) {
-      throw new HttpError(400, 'That player is not on the list.');
-    }
-    names[update.id] = cleanName(update.name);
-  }
-  const lowered = Object.values(names).map((name) => name.toLowerCase());
-  if (new Set(lowered).size !== lowered.length) throw new HttpError(400, 'Two players cannot share a name.');
-  for (const [id, name] of Object.entries(names)) await store.renamePlayer(id, name);
-  return { ok: true };
 }
 
 async function saveWeek(body, store, now) {
@@ -214,7 +189,6 @@ export async function handleApi(request, { store, bootstrapPin = '', now = () =>
       await store.savePin({ salt, hash: await hashPin(pin, salt) });
       return json({ ok: true });
     }
-    if (url.pathname === '/api/admin/names') return json(await saveNames(body, store));
     if (url.pathname === '/api/admin/week') return json(await saveWeek(body, store, clock));
     if (url.pathname === '/api/admin/correction') return json(await saveCorrection(body, store, clock));
     return json({ error: 'Not found' }, 404);

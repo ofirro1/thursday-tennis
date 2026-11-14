@@ -36,10 +36,6 @@ export function createD1Store(db) {
          on conflict(week, player_id) do update set status = excluded.status, updated_at = excluded.updated_at`,
       ).bind(week, playerId, status, updatedAt).run();
     },
-    async renamePlayer(playerId, name) {
-      const result = await db.prepare('update players set name = ? where id = ?').bind(name, playerId).run();
-      return (result.meta?.changes || 0) > 0;
-    },
     async setCancelled(week, cancelled, reason) {
       await db.prepare(
         `insert into weeks (week, cancelled, reason, corrected) values (?, ?, ?, 0)

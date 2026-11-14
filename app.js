@@ -11,7 +11,6 @@ const state = {
   notice: '',
   pending: '',
   hideHint: localStorage.getItem('tennis.hideHint') === '1',
-  names: null,
   pinInput: '',
   newPin: '',
   showPin: false,
@@ -263,19 +262,7 @@ function pinHtml() {
     <button type="button" class="btn secondary" data-action="toggle-pin" ${disabled()}>${state.showPin ? 'Hide PIN' : 'Show PIN'}</button>`;
 }
 
-function drafts() {
-  if (!state.names) {
-    state.names = Object.fromEntries(state.data.players.map((player) => [player.id, player.name]));
-  }
-  return state.names;
-}
-
 function settingsBody(view) {
-  const names = drafts();
-  const fields = state.data.players.map((player) => `
-    <label>${esc(player.name)}
-      <input id="name-${esc(player.id)}" data-action="name" data-id="${esc(player.id)}" maxlength="20" autocapitalize="words" autocomplete="off" value="${esc(names[player.id] || '')}">
-    </label>`).join('');
   const coming = view.upcoming.map((card) => {
     let controls;
     if (card.cancelled) {
@@ -298,10 +285,6 @@ function settingsBody(view) {
   `).join('');
   return `<h2>Settings</h2>
     <button type="button" class="btn secondary" data-action="lock" ${disabled()}>Lock settings</button>
-    <h2>Change a name</h2>
-    <p>Mick can be Mik. Save when you are done.</p>
-    ${fields}
-    <button type="button" class="btn" data-action="save-names" ${disabled()}>Save names</button>
     <h2>Cancel a week</h2>
     ${coming}
     <h2>Fix a past week</h2>
@@ -359,7 +342,6 @@ function choose(id) {
 function changePerson() {
   state.me = '';
   state.token = '';
-  state.names = null;
   state.editWeek = '';
   localStorage.removeItem('tennis.player');
   localStorage.removeItem('tennis.admin');
@@ -440,14 +422,6 @@ async function onClick(event) {
       localStorage.removeItem('tennis.admin');
       state.notice = 'Settings are locked.';
     });
-  } else if (action === 'save-names') {
-    await withPending('Saving…', async () => {
-      const names = state.data.players.map((player) => ({ id: player.id, name: drafts()[player.id] || '' }));
-      await api('/api/admin/names', { names });
-      state.notice = 'Saved.';
-      await load();
-      state.names = Object.fromEntries(state.data.players.map((player) => [player.id, player.name]));
-    });
   } else if (action === 'ask-cancel') {
     state.cancelFor = target.dataset.week;
     state.cancelReason = '';
@@ -517,7 +491,6 @@ function onInput(event) {
   if (target.id === 'pin') state.pinInput = target.value;
   else if (target.id === 'new-pin') state.newPin = target.value;
   else if (target.id === 'cancel-reason') state.cancelReason = target.value;
-  else if (target.dataset.action === 'name') drafts()[target.dataset.id] = target.value;
 }
 
 function onKey(event) {

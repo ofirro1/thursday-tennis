@@ -74,30 +74,17 @@ test('cancelling a week blocks answers', async () => {
   assert.match(answer.body.error, /No tennis/);
 });
 
-test('names, past weeks, and the PIN stay behind the admin PIN', async () => {
+test('past weeks and the PIN stay behind the admin PIN', async () => {
   const store = createStore();
-  const denied = await bodyOf(await call(store, '/api/admin/names', {
+  const denied = await bodyOf(await call(store, '/api/admin/week', {
     method: 'POST',
-    body: { names: [{ id: 'mick', name: 'Mik' }] },
+    body: { week: '2026-11-19', cancelled: true, reason: 'Rain' },
   }));
   assert.equal(denied.status, 401);
 
   const token = await login(store);
-  const renamed = await bodyOf(await call(store, '/api/admin/names', {
-    method: 'POST',
-    token,
-    body: { names: [{ id: 'mick', name: 'Mik' }] },
-  }));
-  assert.equal(renamed.status, 200);
-  const state = await bodyOf(await call(store, '/api/state'));
-  assert.equal(state.body.players.find((player) => player.id === 'mick').name, 'Mik');
-
-  const duplicate = await bodyOf(await call(store, '/api/admin/names', {
-    method: 'POST',
-    token,
-    body: { names: [{ id: 'mick', name: 'Chris' }] },
-  }));
-  assert.equal(duplicate.status, 400);
+  const names = await bodyOf(await call(store, '/api/state'));
+  assert.deepEqual(names.body.players.map((player) => player.name), ['Chris', 'Gordon', 'John', 'Mick', 'Carlton', 'Ofir']);
 
   const tooSoon = await bodyOf(await call(store, '/api/admin/correction', {
     method: 'POST',

@@ -1,4 +1,4 @@
-// A short PIN only stops strangers changing names or the past.
+// A short PIN only stops strangers cancelling a week or changing the past.
 // Guessing is slowed per phone. The hash never goes in the public site.
 
 export function randomHex(bytes) {

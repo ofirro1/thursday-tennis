@@ -1,4 +1,4 @@
-// The six players. Ids stay put if a name is edited (Mick may become Mik).
+// The six players. Names stay as they are.
 export const SEED_PLAYERS = [
   { id: 'chris', name: 'Chris', isAdmin: false, sortOrder: 1 },
   { id: 'gordon', name: 'Gordon', isAdmin: false, sortOrder: 2 },

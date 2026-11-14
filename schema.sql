@@ -1,5 +1,5 @@
 -- Shared tennis data. Safe to run more than once.
--- Names inserted here are only the starting names. Later edits stay in the database.
+-- The six names are fixed.
 
 create table if not exists players (
   id text primary key,

@@ -42,12 +42,6 @@ export function createStore(saved) {
         data.responses.push({ week, playerId, status, updatedAt });
       }
     },
-    async renamePlayer(playerId, name) {
-      const player = data.players.find((row) => row.id === playerId);
-      if (!player) return false;
-      player.name = name;
-      return true;
-    },
     async setCancelled(week, cancelled, reason) {
       const found = data.weeks.find((row) => row.week === week);
       if (found) {

@@ -86,17 +86,19 @@ The app still works. Only Settings is locked.
 
 The next time you open Settings, the new PIN works. Changing the secret alone does not change a PIN that was already saved.
 
-## If a name is wrong, or a week is rained out
+## If a week is rained out, or the record is wrong
 
 Open the link, tap **Ofir**, tap **Settings**, enter the PIN.
 
-- **Change a name.** Mick can become Mik. Phones keep the same person.
 - **Cancel a week.** Rain, or Chris is away. That week is not counted.
 - **Fix a past week.** After Thursday at 8pm you can set who played, who sat out, and who was out.
+- **Change the PIN.**
+
+The names stay Chris, Gordon, John, Mick, Carlton, and Ofir.
 
 ## What is public
 
-Anyone with the link can mark in or out, the same as the group text. They cannot rename people, cancel a week, or change the past without the PIN.
+Anyone with the link can mark in or out, the same as the group text. They cannot cancel a week or change the past without the PIN.
 
 The PIN is checked on Cloudflare. The website code does not contain it. The database is not in this repository.
 
