@@ -10,7 +10,6 @@ const state = {
   loadError: '',
   notice: '',
   pending: '',
-  hideHint: localStorage.getItem('tennis.hideHint') === '1',
   pinInput: '',
   newPin: '',
   showPin: false,
@@ -227,8 +226,10 @@ function mainHtml(view) {
         guestForm = `<button type="button" class="btn secondary" data-action="ask-guest" data-week="${esc(card.id)}" ${disabled()}>➕ Add someone else</button>`;
       }
     }
-    const meter = card.meter ? `<div class="meter ${card.meter.gameOn ? 'on' : 'short'}" role="img" aria-label="${esc(card.meter.text)}">
-      <div class="dots">${[0, 1, 2, 3].map((dot) => `<span class="dot${dot < card.meter.filled ? ' filled' : ''}"></span>`).join('')}</div>
+    const meter = card.meter ? `<div class="meter ${card.meter.gameOn ? 'on' : 'short'}">
+      <div class="dots" aria-label="${esc(card.meter.text)}">${(card.meter.balls || [null, null, null, null]).map((ball) => ball
+        ? `<span class="dot filled${ball.guest ? ' guest' : ''}" title="${esc(ball.name)}" aria-label="${esc(ball.name)}">${esc(ball.initials)}</span>`
+        : '<span class="dot" aria-hidden="true"></span>').join('')}</div>
       <p class="meter-text">${esc(card.meter.text)}</p>
     </div>` : '';
     const gameOn = card.meter?.gameOn ? '<div class="banner in big">🎾 Game on!</div>' : '';
@@ -237,13 +238,7 @@ function mainHtml(view) {
       ${gameOn}${meter}${you}${prompt}${banner}${controls}${lines}${guestList}${guestForm}
     </section>`;
   }).join('');
-  const hint = state.hideHint ? '' : `<section class="hint">
-    <h2>Want this on your home screen?</h2>
-    <p>On iPhone, tap the Share button, then Add to Home Screen.</p>
-    <p>On Android, tap the three dots, then Add to Home screen.</p>
-    <button type="button" class="btn secondary" data-action="hide-hint" ${disabled()}>Got it</button>
-  </section>`;
-  return `<main class="wrap with-tabs">${header()}${cards}${hint}</main>${tabs()}`;
+  return `<main class="wrap with-tabs">${header()}${cards}</main>${tabs()}`;
 }
 
 function historyHtml(view) {
@@ -453,10 +448,6 @@ async function onClick(event) {
       window.scrollTo(0, 0);
       render();
     }
-  } else if (action === 'hide-hint') {
-    state.hideHint = true;
-    localStorage.setItem('tennis.hideHint', '1');
-    render();
   } else if (action === 'mark') mark(target.dataset.week, target.dataset.status);
   else if (action === 'toggle-pin') {
     state.showPin = !state.showPin;

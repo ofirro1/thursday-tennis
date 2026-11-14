@@ -7,6 +7,7 @@ import {
   cutoffUtc,
   closeUtc,
   headcount,
+  uniqueInitials,
   historyText,
   isThursday,
   nextThursdays,
@@ -342,6 +343,16 @@ test('recent guest names are one-tap chips, skipping people already on this week
   assert.deepEqual(names, ['Meredith']);
 });
 
+test('initials are the shortest prefix that still tells people apart', () => {
+  assert.deepEqual(
+    uniqueInitials(['Chris', 'Gordon', 'John', 'Mick', 'Carlton', 'Ofir']),
+    ['Ch', 'G', 'J', 'M', 'Ca', 'O'],
+  );
+  assert.deepEqual(uniqueInitials(['Chris', 'Carlton']), ['Ch', 'Ca']);
+  assert.deepEqual(uniqueInitials(['Mick', 'Meredith']), ['Mi', 'Me']);
+  assert.deepEqual(uniqueInitials(['meredith', 'mick']), ['Me', 'Mi']);
+});
+
 test('the counter fills four dots and says when one more is needed', () => {
   assert.deepEqual(headcount(3), {
     count: 3, filled: 3, need: 1, gameOn: false, text: '3 of 4 — need 1 more',
@@ -370,6 +381,27 @@ test('guests count toward the four dots', () => {
   assert.equal(card.meter.count, 3);
   assert.equal(card.meter.text, '3 of 4 — need 1 more');
   assert.equal(card.meter.gameOn, false);
+  assert.deepEqual(card.meter.balls.map((ball) => ball && ball.initials), ['Ch', 'G', 'Me', null]);
+  assert.equal(card.meter.balls[2].guest, true);
+  assert.equal(card.meter.balls[2].name, 'Meredith');
+});
+
+test('five in still shows only the four who would play', () => {
+  const now = new Date('2026-11-14T00:00:00.000Z');
+  const view = projectState({
+    players,
+    weeks: [],
+    corrections: [],
+    responses: ['chris', 'gordon', 'john', 'mick', 'carlton'].map((playerId) => ({
+      week: '2026-11-19', playerId, status: 'in',
+    })),
+    guests: [],
+  }, 'chris', now);
+  const card = view.upcoming[0];
+  assert.equal(card.meter.gameOn, true);
+  assert.equal(card.meter.text, '5 in — game on');
+  assert.equal(card.meter.balls.filter(Boolean).length, 4);
+  assert.equal(card.meter.balls.some((ball) => ball && ball.name === 'Ofir'), false);
 });
 
 test('a guest fills a spot only when fewer than four regulars are in', () => {

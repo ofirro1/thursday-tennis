@@ -54,7 +54,7 @@ h2 {
   margin: 20px 0 8px;
 }
 
-.lead, .sub, .when, .card p, .hint p, li, label {
+.lead, .sub, .when, .card p, li, label {
   font-size: 20px;
 }
 
@@ -62,11 +62,11 @@ h2 {
 
 .who { font-size: 24px; margin: 12px 0 4px; }
 
-.stack, .card, .hint, .error, .status {
+.stack, .card, .error, .status {
   margin-top: 12px;
 }
 
-.card, .hint, .past li {
+.card, .past li {
   background: var(--card);
   border: 3px solid var(--ink);
   border-radius: 16px;
@@ -157,6 +157,7 @@ h2 {
   font-weight: 700;
 }
 
+.card { margin-top: 20px; margin-bottom: 8px; }
 .card.next h2 { font-size: 32px; }
 
 .card.game-on {
@@ -167,16 +168,27 @@ h2 {
 .meter { margin: 8px 0 12px; }
 .dots { display: flex; gap: 12px; }
 .dot {
-  width: 56px;
-  height: 56px;
+  width: 68px;
+  height: 68px;
   border-radius: 50%;
   border: 4px solid #5c5648;
   background: #fff;
   box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 26px;
+  font-weight: 800;
+  color: #1a1a1a;
+  line-height: 1;
 }
 .dot.filled {
   border-color: #085727;
   background: radial-gradient(circle at 35% 35%, #f4ff9a, #c6e34c 55%, #7ea314);
+}
+.dot.filled.guest {
+  border-style: dashed;
+  background: radial-gradient(circle at 35% 35%, #fffde4, #e7f59a 60%, #b7d45a);
 }
 .meter.short .meter-text { color: #6a4a12; }
 .meter.on .meter-text { color: #085727; }
@@ -241,8 +253,6 @@ th, td {
 th[scope="row"], thead th:first-child { text-align: left; }
 
 .past { list-style: none; padding: 0; margin: 0; }
-
-.hint h2 { margin-top: 0; }
 
 .tabs {
   position: fixed;

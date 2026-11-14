@@ -57,20 +57,13 @@ Open http://127.0.0.1:4173
 
 To choose the trial PIN yourself, start it as `ADMIN_PIN=###### npm start` with 6 to 8 numbers. If you do not, the trial PIN is written to `data/local-pin.txt` on that computer. Either way it is not the real PIN.
 
-## Add it to the home screen
-
-On the main page there is a short hint.
-
-- iPhone: Share, then **Add to Home Screen**.
-- Android: the three dots, then **Add to Home screen**.
-
 ## Notifications are not in this version
 
 A Monday 6pm reminder and a Wednesday 8pm "you're playing / you're sitting out" message would not need a paid service. It would need:
 
 - a small service worker (the bit of the site that can receive a push)
 - a free key pair called VAPID, which you generate once on your computer and store as secrets
-- each phone tapping Allow (on iPhone this only works after Add to Home Screen, and only on iOS 16.4 or newer)
+- each phone tapping Allow (on iPhone, web push needs iOS 16.4 or newer)
 - a free Cloudflare cron timer: Monday 08:00 UTC and Wednesday 10:00 UTC, which is 6pm Monday and 8pm Wednesday in Brisbane
 
 That is enough extra code and setup that v1 leaves it out. The page itself is the reminder for now.

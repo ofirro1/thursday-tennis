@@ -197,6 +197,40 @@ function sitReason(sitter, lastIn, past) {
   return 'a coin toss, so the same person does not always sit out';
 }
 
+export function uniqueInitials(names) {
+  const list = names.map((name) => String(name ?? '').trim());
+  const lower = list.map((name) => name.toLowerCase());
+  return list.map((_, index) => {
+    const mine = lower[index];
+    if (!mine) return '';
+    let length = 1;
+    while (length < mine.length && lower.some((other, otherIndex) => otherIndex !== index && other.slice(0, length) === mine.slice(0, length))) {
+      length += 1;
+    }
+    const raw = mine.slice(0, length);
+    return raw.charAt(0).toUpperCase() + raw.slice(1);
+  });
+}
+
+function ballsFor(players, guests, result) {
+  const names = [...players.map((player) => player.name), ...(guests || []).map((guest) => guest.name)];
+  const initials = uniqueInitials(names);
+  const byName = new Map(names.map((name, index) => [name.toLowerCase(), initials[index]]));
+  const chosen = [
+    ...players.filter((player) => result.playing.includes(player.id)).map((player) => ({ name: player.name, guest: false })),
+    ...(result.guestPlaying || []).map((guest) => ({ name: guest.name, guest: true })),
+  ].slice(0, SPOTS);
+  return Array.from({ length: SPOTS }, (_, index) => {
+    const person = chosen[index];
+    if (!person) return null;
+    return {
+      name: person.name,
+      guest: person.guest,
+      initials: byName.get(person.name.toLowerCase()) || person.name.slice(0, 1).toUpperCase(),
+    };
+  });
+}
+
 export function headcount(inCount) {
   const count = Math.max(0, inCount);
   const filled = Math.min(count, SPOTS);
@@ -512,7 +546,7 @@ export function projectState(data, me, now) {
       ...result.guestWaiting.map((guest) => ({ ...guest, playing: false })),
     ];
     const regularsIn = players.filter((player) => week.responses[player.id] === 'in').length;
-    const meter = headcount(regularsIn + guests.length);
+    const meter = { ...headcount(regularsIn + guests.length), balls: ballsFor(players, guests, result) };
     if (phaseName === 'open') {
       return {
         id,
