@@ -154,12 +154,45 @@ async function saveResponse(body, store, now) {
   if (!state.players.some((player) => player.id === playerId)) {
     throw new HttpError(400, 'That player is not on the list.');
   }
-  if (status !== 'in' && status !== 'out') throw new HttpError(400, 'Tap in or out.');
+  if (status !== 'in' && status !== 'out' && status !== 'clear') throw new HttpError(400, 'Tap in or can\'t make it.');
   if (!nextThursdays(now, 8).includes(week)) throw new HttpError(400, 'That week is finished.');
   const meta = state.weeks.find((row) => row.week === week);
   if (meta?.cancelled) throw new HttpError(400, 'No tennis this week.');
   if (phase(week, now) === 'closed') throw new HttpError(400, 'This week is finished. Ask Ofir if it needs fixing.');
+  if (status === 'clear') {
+    await store.deleteResponse(playerId, week);
+    return { ok: true };
+  }
   await store.upsertResponse(playerId, week, status, now.toISOString());
+  return { ok: true };
+}
+
+function cleanGuestName(input) {
+  const name = String(input || '').trim().replace(/\s+/g, ' ');
+  if (!/^[A-Za-z][A-Za-z'-]{0,19}$/.test(name)) throw new HttpError(400, 'Type a first name, like Sam.');
+  return name;
+}
+
+async function addGuest(body, store, now) {
+  const state = await store.getState();
+  const week = String(body.week || '');
+  const name = cleanGuestName(body.name);
+  if (!nextThursdays(now, 8).includes(week)) throw new HttpError(400, 'That week is finished.');
+  const meta = state.weeks.find((row) => row.week === week);
+  if (meta?.cancelled) throw new HttpError(400, 'No tennis this week.');
+  const already = state.guests.filter((guest) => guest.week === week);
+  if (already.length >= 3) throw new HttpError(400, 'That is enough guests for this week.');
+  if (already.some((guest) => guest.name.toLowerCase() === name.toLowerCase())) {
+    throw new HttpError(400, 'That guest is already on this week.');
+  }
+  await store.addGuest({ id: randomHex(8), week, name, createdAt: now.toISOString() });
+  return { ok: true };
+}
+
+async function removeGuest(body, store) {
+  const id = String(body.id || '');
+  if (!/^[a-f0-9]{16}$/.test(id)) throw new HttpError(400, 'That guest is not on the list.');
+  await store.removeGuest(id);
   return { ok: true };
 }
 
@@ -176,6 +209,8 @@ export async function handleApi(request, { store, bootstrapPin = '', now = () =>
     if (request.method !== 'POST') return json({ error: 'Not found' }, 404);
     const body = await readJson(request);
     if (url.pathname === '/api/responses') return json(await saveResponse(body, store, clock));
+    if (url.pathname === '/api/guests') return json(await addGuest(body, store, clock));
+    if (url.pathname === '/api/guests/remove') return json(await removeGuest(body, store));
     if (url.pathname === '/api/admin/login') return json(await login(body, store, String(bootstrapPin || '').trim(), request, clock));
     if (url.pathname === '/api/admin/logout') {
       const token = await requireAdmin(request, store, clock);

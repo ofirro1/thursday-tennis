@@ -6,14 +6,14 @@ The page is a normal website (GitHub Pages). The answers live in a free Cloudfla
 
 ## How a Thursday works
 
-The page shows the next 4 Thursdays. Each person taps **I'm in** or **I'm out**. No answer yet is fine.
+The page shows the next 4 Thursdays. Each person taps **I'm in** or **Can't make it**. No answer yet is fine. Anyone can add a guest for one Thursday. A guest plays only if fewer than four regulars are in, and guests do not change the fairness counts.
 
 On Wednesday at 8pm (Brisbane time) the page picks the four.
 
 - Exactly 4 people are in: they play.
-- More than 4 are in: someone who sat out more recently plays first. If that is a tie, the person who has played fewer games so far plays first. If it is still a tie, a coin toss picks, and every phone shows the same result. The page says in plain words why someone sits out, for example `Gordon sits out: played last 3 weeks`.
+- More than 4 are in: someone who sat out more recently plays first. If that is a tie, the person who has played fewer games so far plays first. If it is still a tie, a coin toss picks, and every phone shows the same result. The page says in plain words why someone sits out, for example `Gordon sits out this week: he played the last 3 weeks`.
 - Fewer than 4 are in: it says **Short a player this week**.
-- Being out does not count as sitting out.
+- Can't make it does not count as sitting out. Sat out means they were in, but not picked.
 
 Until 8pm Thursday, people can still change. If someone who was picked taps out, the next person comes in. After 8pm Thursday, that week is finished. Ofir can still correct it.
 

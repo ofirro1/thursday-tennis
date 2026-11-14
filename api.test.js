@@ -152,6 +152,26 @@ test('five wrong PINs lock that phone, not a different one', async () => {
   assert.equal(newPin.status, 200);
 });
 
+test('any player can add and remove a guest for one Thursday', async () => {
+  const store = createStore();
+  const added = await bodyOf(await call(store, '/api/guests', {
+    method: 'POST',
+    body: { week: '2026-11-19', name: 'Sam' },
+  }));
+  assert.equal(added.status, 200);
+  const state = await bodyOf(await call(store, '/api/state'));
+  assert.equal(state.body.guests.length, 1);
+  assert.equal(state.body.guests[0].name, 'Sam');
+  assert.equal(state.body.guests[0].week, '2026-11-19');
+  const removed = await bodyOf(await call(store, '/api/guests/remove', {
+    method: 'POST',
+    body: { id: state.body.guests[0].id },
+  }));
+  assert.equal(removed.status, 200);
+  const after = await bodyOf(await call(store, '/api/state'));
+  assert.equal(after.body.guests.length, 0);
+});
+
 async function login(store) {
   const response = await bodyOf(await call(store, '/api/admin/login', {
     method: 'POST',

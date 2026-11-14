@@ -94,17 +94,30 @@ export function recentPastThursdays(now, count = 8) {
   return out;
 }
 
+const SHORT_DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const SHORT_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
 export function formatMatchDay(ymd, now) {
   const parsed = parseYmd(ymd);
-  const weekday = WEEKDAYS[new Date(parsed.utc).getUTCDay()];
+  const weekday = SHORT_DAYS[new Date(parsed.utc).getUTCDay()];
   const showYear = now && brisbaneParts(now).y !== parsed.y;
-  return `${weekday} ${parsed.d} ${MONTHS[parsed.m - 1]}${showYear ? ` ${parsed.y}` : ''}`;
+  return `${weekday} ${parsed.d} ${SHORT_MONTHS[parsed.m - 1]}${showYear ? ` ${parsed.y}` : ''}`;
 }
 
 export function formatHistoryDate(ymd) {
   const parsed = parseYmd(ymd);
-  return `${parsed.d} ${MONTHS[parsed.m - 1]} ${parsed.y}`;
+  const weekday = SHORT_DAYS[new Date(parsed.utc).getUTCDay()];
+  return `${weekday} ${parsed.d} ${SHORT_MONTHS[parsed.m - 1]} ${parsed.y}`;
 }
+
+export const HOW_WE_PICK = [
+  'If more than four can play, one or two sit out.',
+  'Whoever sat out most recently gets a game.',
+  'If that is even, whoever has played fewer games gets a game.',
+  'A coin toss breaks a tie. Every phone shows the same result.',
+  "Can't make it means they said no. Sat out means they could play, but were not picked.",
+  'A guest plays only if fewer than four regulars are in. Guests do not change these counts.',
+];
 
 export function cutoffText(ymd) {
   const parsed = parseYmd(ymd);
@@ -158,7 +171,7 @@ function sitReason(sitter, lastIn, past) {
   if (sitter.lastSit !== lastIn.lastSit) {
     const streak = playingStreak(sitter.id, past);
     if (streak === 1) return 'played last week';
-    if (streak >= 2) return `played last ${streak} weeks`;
+    if (streak >= 2) return `played the last ${streak} weeks`;
     return 'others sat out more recently';
   }
   if (sitter.games !== lastIn.games) {
@@ -173,7 +186,23 @@ export function shortMessage(count) {
   return `Short a player this week. Only ${count} players are in.`;
 }
 
-export function selectPlayers({ players, availability, past, weekId }) {
+function heReason(reason) {
+  if (!reason) return '';
+  if (reason.startsWith('played')) return `he ${reason}`;
+  return reason;
+}
+
+export function fairnessSentence(result) {
+  const ready = result.playing.length + result.sittingOut.length;
+  if (!result.sittingOut.length) return '';
+  const howMany = result.sittingOut.length === 1 ? 'One sits out.' : `${result.sittingOut.length} sit out.`;
+  const who = result.sittingOut
+    .map((row) => `${row.name} sits out this week: ${heReason(row.reason)}.`)
+    .join(' ');
+  return `${ready} are in. ${howMany} ${who}`;
+}
+
+export function selectPlayers({ players, availability, past, weekId, guests = [] }) {
   const orderedPast = [...(past || [])].sort((a, b) => (a.id < b.id ? -1 : 1));
   const available = [];
   for (const player of players) {
@@ -210,12 +239,23 @@ export function selectPlayers({ players, availability, past, weekId }) {
     else outcomes[player.id] = chosenIds.has(player.id) ? 'played' : 'sat_out';
   }
 
+  const orderedGuests = [...guests].sort((a, b) => {
+    const left = a.createdAt || a.id || '';
+    const right = b.createdAt || b.id || '';
+    if (left !== right) return left < right ? -1 : 1;
+    return String(a.name).localeCompare(String(b.name));
+  });
+  const spotsLeft = Math.max(0, SPOTS - chosenIds.size);
+  const guestPlaying = orderedGuests.slice(0, spotsLeft);
+  const guestWaiting = orderedGuests.slice(spotsLeft);
   const playing = players.filter((player) => outcomes[player.id] === 'played').map((player) => player.id);
   return {
     playing,
     sittingOut,
-    short: playing.length < SPOTS,
+    short: playing.length + guestPlaying.length < SPOTS,
     outcomes,
+    guestPlaying,
+    guestWaiting,
   };
 }
 
@@ -256,6 +296,7 @@ function settleOne(week, chain, players) {
     availability: week.responses || {},
     past: chain,
     weekId: week.id,
+    guests: week.guests || [],
   });
   return {
     id: week.id,
@@ -271,6 +312,7 @@ function recordedFromState(data) {
   for (const week of data.weeks || []) ids.add(week.week);
   for (const row of data.responses || []) ids.add(row.week);
   for (const row of data.corrections || []) ids.add(row.week);
+  for (const guest of data.guests || []) ids.add(guest.week);
   return [...ids].sort().map((id) => {
     const meta = (data.weeks || []).find((week) => week.week === id) || {};
     const responses = {};
@@ -281,6 +323,9 @@ function recordedFromState(data) {
     for (const row of data.corrections || []) {
       if (row.week === id) corrections[row.playerId] = row.outcome;
     }
+    const guests = (data.guests || [])
+      .filter((guest) => guest.week === id)
+      .map((guest) => ({ id: guest.id, name: guest.name, createdAt: guest.createdAt || '' }));
     return {
       id,
       cancelled: !!meta.cancelled,
@@ -288,12 +333,13 @@ function recordedFromState(data) {
       corrected: !!meta.corrected,
       responses,
       corrections,
+      guests,
     };
   });
 }
 
 function hasActivity(week) {
-  return week.cancelled || week.corrected || Object.keys(week.responses).length > 0;
+  return week.cancelled || week.corrected || Object.keys(week.responses).length > 0 || (week.guests || []).length > 0;
 }
 
 export function historyText(settled, players) {
@@ -303,49 +349,56 @@ export function historyText(settled, players) {
     return why ? `${date}: no tennis (${why}).` : `${date}: no tennis.`;
   }
   const played = namesFor(settled.outcomes, 'played', players);
+  const guests = (settled.guestPlaying || []).map((guest) => `${guest.name} (guest)`);
   const sat = namesFor(settled.outcomes, 'sat_out', players);
   const out = namesFor(settled.outcomes, 'unavailable', players);
-  const parts = [`${date}: ${joinNames(played)} played.`];
+  const parts = [`${date}: ${joinNames([...played, ...guests])} played.`];
   if (sat.length) parts.push(`${joinNames(sat)} sat out.`);
-  if (out.length === 1) parts.push(`${out[0]} was out.`);
-  else if (out.length > 1) parts.push(`${joinNames(out)} were out.`);
-  if (played.length < SPOTS) parts.push('Short a player.');
-  if (settled.corrected) parts.push('Fixed.');
+  if (out.length) parts.push(`${joinNames(out)} can't make it.`);
+  if (played.length + guests.length < SPOTS) parts.push('Short a player.');
   return parts.join(' ');
 }
 
 function statusLine(playerId, phaseName, myStatus, result) {
   if (!playerId) return null;
   if (phaseName === 'open') {
-    if (myStatus === 'in') return { tone: 'in', text: 'You are in' };
-    if (myStatus === 'out') return { tone: 'out', text: 'You are out' };
-    return { tone: 'wait', text: 'Please tap in or out' };
+    if (myStatus === 'in') return { tone: 'in', text: "👍 You're in" };
+    if (myStatus === 'out') return { tone: 'out', text: "❌ Can't make it" };
+    return null;
   }
   const outcome = result?.outcomes?.[playerId];
-  if (outcome === 'played') return { tone: 'in', text: 'You are playing' };
+  if (outcome === 'played') return { tone: 'in', text: "🎾 You're playing!" };
   if (outcome === 'sat_out') {
     const reason = result.sittingOut.find((row) => row.playerId === playerId)?.reason;
-    return { tone: 'sit', text: reason ? `You are sitting out: ${reason}` : 'You are sitting out' };
+    const because = reason && reason.startsWith('played') ? `: you ${reason}` : '';
+    return { tone: 'sit', text: `You're sitting out${because}` };
   }
-  if (outcome === 'unavailable') return { tone: 'out', text: 'You are out' };
-  return { tone: 'wait', text: 'You did not answer, so you are not playing' };
+  if (outcome === 'unavailable') return { tone: 'out', text: "❌ Can't make it" };
+  return null;
+}
+
+function playingNames(result, players) {
+  const names = namesFor(result.outcomes, 'played', players);
+  const guests = (result.guestPlaying || []).map((guest) => `${guest.name} (guest)`);
+  return [...names, ...guests];
 }
 
 function pickedLines(result, players) {
-  const lines = [`Playing: ${joinNames(namesFor(result.outcomes, 'played', players))}`];
-  for (const row of result.sittingOut) {
-    lines.push(row.reason ? `${row.name} sits out: ${row.reason}` : `${row.name} sits out`);
-  }
+  const lines = [];
+  const summary = fairnessSentence(result);
+  if (summary) lines.push(summary);
+  lines.push(`Playing: ✅ ${joinNames(playingNames(result, players))}`);
   const out = namesFor(result.outcomes, 'unavailable', players);
   const yet = namesFor(result.outcomes, 'unanswered', players);
-  if (out.length) lines.push(`Out: ${joinNames(out)}`);
+  if (out.length) lines.push(`Can't make it: ${joinNames(out)}`);
   if (yet.length) lines.push(`Not yet: ${joinNames(yet)}`);
+  for (const guest of result.guestWaiting || []) lines.push(`${guest.name} is not needed this week.`);
   if (result.sittingOut[0]) lines.push(`If someone drops out, ${result.sittingOut[0].name} comes in.`);
   lines.push('You can still change until 8pm Thursday.');
   return lines;
 }
 
-function openLines(players, responses) {
+function openLines(players, responses, preview) {
   const grouped = { in: [], out: [], yet: [] };
   for (const player of players) {
     const status = responses[player.id];
@@ -353,11 +406,17 @@ function openLines(players, responses) {
     else if (status === 'out') grouped.out.push(player.name);
     else grouped.yet.push(player.name);
   }
-  return [
-    `In: ${joinNames(grouped.in)}`,
-    `Out: ${joinNames(grouped.out)}`,
-    `Not yet: ${joinNames(grouped.yet)}`,
-  ];
+  const lines = [`In: ${joinNames(grouped.in)}`];
+  const summary = fairnessSentence(preview);
+  if (summary) lines.push(summary);
+  if (grouped.out.length) lines.push(`Can't make it: ${joinNames(grouped.out)}`);
+  if (grouped.yet.length) lines.push(`Not yet: ${joinNames(grouped.yet)}`);
+  lines.push('Final four confirmed Wednesday night.');
+  for (const guest of preview.guestWaiting || []) lines.push(`${guest.name} is not needed this week.`);
+  if ((preview.guestPlaying || []).length) {
+    lines.push(`Guest playing: ${joinNames(preview.guestPlaying.map((guest) => guest.name))}.`);
+  }
+  return lines;
 }
 
 function cancelBanner(reason) {
@@ -405,12 +464,26 @@ export function projectState(data, me, now) {
         canAnswer: false,
         myStatus: null,
         you: null,
+        prompt: '',
         banner: { tone: 'cancel', text: cancelBanner(week.cancelReason) },
         lines: [],
+        guests: [],
       };
     }
     const phaseName = phase(id, now);
     const myStatus = week.responses[me] || null;
+    const guests = week.guests || [];
+    const result = selectPlayers({
+      players,
+      availability: week.responses,
+      past: chain,
+      weekId: id,
+      guests,
+    });
+    const guestRows = [
+      ...result.guestPlaying.map((guest) => ({ ...guest, playing: true })),
+      ...result.guestWaiting.map((guest) => ({ ...guest, playing: false })),
+    ];
     if (phaseName === 'open') {
       return {
         id,
@@ -421,16 +494,13 @@ export function projectState(data, me, now) {
         canAnswer: true,
         myStatus,
         you: statusLine(me, 'open', myStatus, null),
+        prompt: myStatus ? '' : 'Tap one button.',
         banner: null,
-        lines: [...openLines(players, week.responses), `Picked ${cutoffText(id)}.`],
+        lines: openLines(players, week.responses, result),
+        guests: guestRows,
       };
     }
-    const result = selectPlayers({
-      players,
-      availability: week.responses,
-      past: chain,
-      weekId: id,
-    });
+    const onCourt = result.playing.length + result.guestPlaying.length;
     return {
       id,
       title,
@@ -440,8 +510,10 @@ export function projectState(data, me, now) {
       canAnswer: phaseName === 'live',
       myStatus,
       you: statusLine(me, phaseName, myStatus, result),
-      banner: result.short ? { tone: 'short', text: shortMessage(result.playing.length) } : null,
+      prompt: myStatus || !result ? '' : 'Tap one button.',
+      banner: result.short ? { tone: 'short', text: shortMessage(onCourt) } : null,
       lines: pickedLines(result, players),
+      guests: guestRows,
     };
   });
 

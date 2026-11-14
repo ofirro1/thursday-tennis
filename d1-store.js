@@ -7,11 +7,12 @@ function mapPlayer(row) {
 export function createD1Store(db) {
   return {
     async getState() {
-      const [players, responses, weeks, corrections] = await Promise.all([
+      const [players, responses, weeks, corrections, guests] = await Promise.all([
         db.prepare('select id, name, is_admin, sort_order from players order by sort_order asc').all(),
         db.prepare('select week, player_id, status from responses').all(),
         db.prepare('select week, cancelled, reason, corrected from weeks').all(),
         db.prepare('select week, player_id, outcome from corrections').all(),
+        db.prepare('select id, week, name, created_at from guests order by created_at asc').all(),
       ]);
       return {
         players: players.results.map(mapPlayer),
@@ -27,7 +28,23 @@ export function createD1Store(db) {
           playerId: row.player_id,
           outcome: row.outcome,
         })),
+        guests: guests.results.map((row) => ({
+          id: row.id,
+          week: row.week,
+          name: row.name,
+          createdAt: row.created_at,
+        })),
       };
+    },
+    async deleteResponse(playerId, week) {
+      await db.prepare('delete from responses where week = ? and player_id = ?').bind(week, playerId).run();
+    },
+    async addGuest(guest) {
+      await db.prepare('insert into guests (id, week, name, created_at) values (?, ?, ?, ?)')
+        .bind(guest.id, guest.week, guest.name, guest.createdAt).run();
+    },
+    async removeGuest(id) {
+      await db.prepare('delete from guests where id = ?').bind(id).run();
     },
     async upsertResponse(playerId, week, status, updatedAt) {
       await db.prepare(

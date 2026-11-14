@@ -137,6 +137,20 @@ h2 {
 .banner.sit, .banner.wait, .banner.short { background: #fff3c4; border-color: var(--amber); }
 .banner.cancel { background: #f3f3f3; }
 .banner.short { font-size: 26px; }
+.banner.big { font-size: 32px; }
+
+.prompt {
+  font-size: 20px;
+  margin: 8px 0;
+}
+
+.card.next h2 { font-size: 32px; }
+
+.explain {
+  margin: 0;
+  padding-left: 1.3rem;
+}
+.explain li { margin: 8px 0; }
 
 .error, .status {
   padding: 12px;

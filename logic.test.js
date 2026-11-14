@@ -114,7 +114,7 @@ test('Gordon sits out: played last 3 weeks', () => {
   assert.deepEqual(result.playing, ['chris', 'john', 'mick', 'carlton']);
   assert.equal(result.sittingOut.length, 1);
   assert.equal(result.sittingOut[0].playerId, 'gordon');
-  assert.equal(result.sittingOut[0].reason, 'played last 3 weeks');
+  assert.equal(result.sittingOut[0].reason, 'played the last 3 weeks');
   assert.equal(result.outcomes.gordon, 'sat_out');
   assert.equal(result.outcomes.ofir, 'unavailable');
 });
@@ -243,8 +243,8 @@ test('a live week shows the sit-out reason and a dropout fills from the same ord
   const card = view.upcoming[0];
   assert.equal(card.id, '2026-11-19');
   assert.equal(card.phase, 'live');
-  assert.equal(card.you.text, 'You are sitting out: played last 3 weeks');
-  assert.ok(card.lines.includes('Gordon sits out: played last 3 weeks'));
+  assert.equal(card.you.text, "You're sitting out: you played the last 3 weeks");
+  assert.ok(card.lines.some((line) => line.includes('5 are in. One sits out. Gordon sits out this week: he played the last 3 weeks.')));
 
   const promoted = projectState({
     players,
@@ -253,7 +253,7 @@ test('a live week shows the sit-out reason and a dropout fills from the same ord
     responses: responses.map((row) => (row.playerId === 'gordon' ? { ...row, status: 'out' } : row)),
   }, 'chris', now);
   const nextCard = promoted.upcoming[0];
-  assert.equal(nextCard.you.text, 'You are playing');
+  assert.equal(nextCard.you.text, "🎾 You're playing!");
   assert.equal(nextCard.banner, null);
   assert.ok(nextCard.lines.some((line) => line.startsWith('Playing:')));
   assert.ok(!nextCard.lines.some((line) => line.includes('sits out')));
@@ -267,7 +267,7 @@ test('cancelled weeks stay out of the counts', () => {
     corrections: [],
     responses: players.map((player) => ({ week: '2026-11-12', playerId: player.id, status: 'in' })),
   }, 'ofir', now);
-  assert.equal(view.history[0].text, '12 November 2026: no tennis (Rain).');
+  assert.equal(view.history[0].text, 'Thu 12 Nov 2026: no tennis (Rain).');
   for (const row of view.stats) {
     assert.equal(row.played, 0);
     assert.equal(row.satOut, 0);
@@ -294,8 +294,7 @@ test('history counts games, sit-outs, and times out', () => {
   assert.equal(byId.ofir.satOut, 0);
   assert.match(view.history[0].text, /Chris, Gordon, John and Mick played/);
   assert.match(view.history[0].text, /Carlton sat out/);
-  assert.match(view.history[0].text, /Ofir was out/);
-  assert.match(view.history[0].text, /Fixed/);
+  assert.match(view.history[0].text, /Ofir can't make it/);
 });
 
 test('open weeks ask for an answer and do not pick anyone yet', () => {
@@ -308,11 +307,12 @@ test('open weeks ask for an answer and do not pick anyone yet', () => {
   }, 'gordon', now);
   const card = view.upcoming[0];
   assert.equal(card.phase, 'open');
-  assert.equal(card.you.text, 'You are in');
+  assert.equal(card.you.text, "👍 You're in");
+  assert.equal(card.prompt, '');
   assert.equal(card.banner, null);
   assert.ok(card.lines.includes('In: Gordon'));
   assert.ok(card.lines.includes('Not yet: Chris, John, Mick, Carlton and Ofir'));
-  assert.ok(card.lines.includes('Picked Wednesday 18 November, 8pm.'));
+  assert.ok(card.lines.includes('Final four confirmed Wednesday night.'));
   assert.equal(view.history.length, 0);
 });
 
@@ -327,5 +327,71 @@ test('history text for a short week', () => {
     sittingOut: [],
   }, players);
   assert.match(text, /Short a player/);
-  assert.match(text, /Ofir was out/);
+  assert.match(text, /Ofir can't make it/);
+});
+
+test('a guest fills a spot only when fewer than four regulars are in', () => {
+  const full = selectPlayers({
+    players,
+    weekId: '2026-11-19',
+    past: [],
+    availability: allIn(),
+    guests: [{ id: 'g1', name: 'Sam', createdAt: '2026-11-14T00:00:00.000Z' }],
+  });
+  assert.equal(full.guestPlaying.length, 0);
+  assert.equal(full.guestWaiting[0].name, 'Sam');
+  assert.equal(full.short, false);
+
+  const short = selectPlayers({
+    players,
+    weekId: '2026-11-19',
+    past: [],
+    availability: { chris: 'in', gordon: 'in', john: 'in' },
+    guests: [
+      { id: 'g1', name: 'Sam', createdAt: '2026-11-14T00:00:00.000Z' },
+      { id: 'g2', name: 'Ben', createdAt: '2026-11-14T01:00:00.000Z' },
+    ],
+  });
+  assert.deepEqual(short.guestPlaying.map((guest) => guest.name), ['Sam']);
+  assert.deepEqual(short.guestWaiting.map((guest) => guest.name), ['Ben']);
+  assert.equal(short.short, false);
+  assert.equal(short.outcomes.chris, 'played');
+  assert.equal(short.outcomes.mick, 'unanswered');
+});
+
+test('guests do not change fairness counts', () => {
+  const now = new Date('2026-11-14T00:00:00.000Z');
+  const view = projectState({
+    players,
+    weeks: [{ week: '2026-11-12', cancelled: false, reason: '', corrected: false }],
+    corrections: [],
+    responses: [
+      { week: '2026-11-12', playerId: 'chris', status: 'in' },
+      { week: '2026-11-12', playerId: 'gordon', status: 'in' },
+      { week: '2026-11-12', playerId: 'john', status: 'in' },
+    ],
+    guests: [{ id: 'g1', week: '2026-11-12', name: 'Sam', createdAt: '2026-11-12T00:00:00.000Z' }],
+  }, 'chris', now);
+  const chris = view.stats.find((row) => row.id === 'chris');
+  assert.equal(chris.played, 1);
+  assert.equal(view.stats.every((row) => row.name !== 'Sam'), true);
+  assert.match(view.history[0].text, /Sam \(guest\) played/);
+});
+
+test('12 November 2026 records four played and two who could not come', () => {
+  const now = new Date('2026-11-14T00:00:00.000Z');
+  const outcomes = {
+    chris: 'played', gordon: 'unavailable', john: 'unavailable', mick: 'played', carlton: 'played', ofir: 'played',
+  };
+  const view = projectState({
+    players,
+    weeks: [{ week: '2026-11-12', cancelled: false, reason: '', corrected: true }],
+    corrections: Object.entries(outcomes).map(([playerId, outcome]) => ({ week: '2026-11-12', playerId, outcome })),
+    responses: [],
+    guests: [],
+  }, null, now);
+  assert.match(view.history[0].text, /Chris, Mick, Carlton and Ofir played/);
+  assert.match(view.history[0].text, /Gordon and John can't make it/);
+  assert.equal(view.stats.find((row) => row.id === 'gordon').unavailable, 1);
+  assert.equal(view.stats.find((row) => row.id === 'gordon').satOut, 0);
 });

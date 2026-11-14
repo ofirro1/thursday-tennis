@@ -6,6 +6,7 @@ function fresh() {
     responses: [],
     weeks: [],
     corrections: [],
+    guests: [],
     pin: null,
     sessions: [],
     attempts: {},
@@ -18,6 +19,7 @@ export function createStore(saved) {
   data.responses ||= [];
   data.weeks ||= [];
   data.corrections ||= [];
+  data.guests ||= [];
   data.sessions ||= [];
   data.attempts ||= {};
 
@@ -31,7 +33,17 @@ export function createStore(saved) {
         responses: data.responses.map((row) => ({ week: row.week, playerId: row.playerId, status: row.status })),
         weeks: data.weeks.map((row) => ({ ...row })),
         corrections: data.corrections.map((row) => ({ ...row })),
+        guests: data.guests.map((row) => ({ ...row })),
       };
+    },
+    async deleteResponse(playerId, week) {
+      data.responses = data.responses.filter((row) => !(row.week === week && row.playerId === playerId));
+    },
+    async addGuest(guest) {
+      data.guests.push({ ...guest });
+    },
+    async removeGuest(id) {
+      data.guests = data.guests.filter((guest) => guest.id !== id);
     },
     async upsertResponse(playerId, week, status, updatedAt) {
       const found = data.responses.find((row) => row.week === week && row.playerId === playerId);

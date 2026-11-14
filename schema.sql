@@ -38,6 +38,24 @@ create table if not exists corrections (
   primary key (week, player_id)
 );
 
+create table if not exists guests (
+  id text primary key,
+  week text not null,
+  name text not null,
+  created_at text not null
+);
+
+-- Thursday 12 November 2026. Gordon and John could not play. The other four played.
+insert or ignore into weeks (week, cancelled, reason, corrected) values ('2026-11-12', 0, '', 1);
+insert or ignore into corrections (week, player_id, outcome) values
+  ('2026-11-12', 'chris', 'played'),
+  ('2026-11-12', 'gordon', 'unavailable'),
+  ('2026-11-12', 'john', 'unavailable'),
+  ('2026-11-12', 'mick', 'played'),
+  ('2026-11-12', 'carlton', 'played'),
+  ('2026-11-12', 'ofir', 'played');
+update weeks set corrected = 1 where week = '2026-11-12' and cancelled = 0;
+
 create table if not exists pin (
   id integer primary key check (id = 1),
   salt text not null,

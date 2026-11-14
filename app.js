@@ -18,6 +18,9 @@ const state = {
   cancelReason: '',
   editWeek: '',
   editOutcomes: null,
+  returnTo: '',
+  guestFor: '',
+  guestName: '',
 };
 
 const app = document.getElementById('app');
@@ -52,7 +55,7 @@ function iAmAdmin() {
 
 function activeHash() {
   if (location.hash === '#history') return '#history';
-  if (location.hash === '#settings') return '#settings';
+  if (location.hash === '#settings' && iAmAdmin()) return '#settings';
   return '#coming';
 }
 
@@ -146,7 +149,11 @@ function whoHtml() {
   const buttons = state.data.players.map((player) => `
     <button type="button" class="btn name" data-action="choose" data-id="${esc(player.id)}" ${disabled()}>${esc(player.name)}</button>
   `).join('');
+  const back = state.returnTo
+    ? `<button type="button" class="btn secondary" data-action="back" ${disabled()}>Back</button>`
+    : '';
   return `<main class="wrap">
+    ${back}
     <h1>Who are you?</h1>
     <p class="lead">Tap your name. This phone will remember.</p>
     ${alerts()}
@@ -166,8 +173,8 @@ function alerts() {
 function header() {
   const name = mePlayer()?.name || '';
   return `<header class="top">
-    <h1>Thursday tennis</h1>
-    <p class="sub">8pm at Chris's house. Free.</p>
+    <h1>🎾 Thursday tennis</h1>
+    <p class="sub">8pm at Chris's house</p>
     ${alerts()}
     <p class="who">You are <strong>${esc(name)}</strong></p>
     <button type="button" class="btn ghost" data-action="change" ${disabled()}>Not you? Change</button>
@@ -186,18 +193,32 @@ function tabs() {
 }
 
 function mainHtml(view) {
-  const cards = view.upcoming.map((card) => {
-    const you = card.you ? `<div class="banner ${card.you.tone}">${esc(card.you.text)}</div>` : '';
+  const cards = view.upcoming.map((card, index) => {
+    const you = card.you ? `<div class="banner ${card.you.tone}${index === 0 ? ' big' : ''}">${esc(card.you.text)}</div>` : '';
+    const prompt = card.prompt ? `<p class="prompt">${esc(card.prompt)}</p>` : '';
     const banner = card.banner ? `<div class="banner ${card.banner.tone}">${esc(card.banner.text)}</div>` : '';
     const lines = card.lines.map((line) => `<p>${esc(line)}</p>`).join('');
-    const controls = card.canAnswer ? `<div class="pair">
-      <button type="button" class="btn choice in ${card.myStatus === 'in' ? 'on' : ''}" data-action="mark" data-week="${esc(card.id)}" data-status="in" aria-pressed="${card.myStatus === 'in'}" ${disabled()}>${card.myStatus === 'in' ? "✓ I'm in" : "I'm in"}</button>
-      <button type="button" class="btn choice out ${card.myStatus === 'out' ? 'on' : ''}" data-action="mark" data-week="${esc(card.id)}" data-status="out" aria-pressed="${card.myStatus === 'out'}" ${disabled()}>${card.myStatus === 'out' ? "✓ I'm out" : "I'm out"}</button>
+    const controls = card.canAnswer ? `<div class="stack">
+      <button type="button" class="btn choice in ${card.myStatus === 'in' ? 'on' : ''}" data-action="mark" data-week="${esc(card.id)}" data-status="in" aria-pressed="${card.myStatus === 'in'}" ${disabled()}>${card.myStatus === 'in' ? "✅ I'm in" : "👍 I'm in"}</button>
+      <button type="button" class="btn choice out ${card.myStatus === 'out' ? 'on' : ''}" data-action="mark" data-week="${esc(card.id)}" data-status="out" aria-pressed="${card.myStatus === 'out'}" ${disabled()}>${card.myStatus === 'out' ? "✅ Can't make it" : "❌ Can't make it"}</button>
     </div>` : '';
-    return `<section class="card">
+    const guestList = (card.guests || []).map((guest) => `
+      <p>${esc(guest.name)} (guest)${guest.playing ? ' ✅' : ''}</p>
+      <button type="button" class="btn secondary" data-action="remove-guest" data-id="${esc(guest.id)}" ${disabled()}>Remove ${esc(guest.name)}</button>
+    `).join('');
+    let guestForm = '';
+    if (card.canAnswer) {
+      guestForm = state.guestFor === card.id
+        ? `<label>Guest's first name
+            <input id="guest-name" maxlength="20" autocomplete="off" autocapitalize="words" value="${esc(state.guestName)}">
+          </label>
+          <button type="button" class="btn" data-action="save-guest" data-week="${esc(card.id)}" ${disabled()}>Add guest</button>
+          <button type="button" class="btn secondary" data-action="abort-guest" ${disabled()}>Cancel</button>`
+        : `<button type="button" class="btn secondary" data-action="ask-guest" data-week="${esc(card.id)}" ${disabled()}>+ Add a guest</button>`;
+    }
+    return `<section class="card${index === 0 ? ' next' : ''}">
       <h2>${esc(card.title)}</h2>
-      <p class="when">8pm at Chris's house</p>
-      ${you}${banner}${controls}${lines}
+      ${you}${prompt}${banner}${controls}${lines}${guestList}${guestForm}
     </section>`;
   }).join('');
   const hint = state.hideHint ? '' : `<section class="hint">
@@ -231,21 +252,28 @@ function historyHtml(view) {
             <th scope="col">Name</th>
             <th scope="col">Played</th>
             <th scope="col">Sat out</th>
-            <th scope="col">Was out</th>
+            <th scope="col">Can't make it</th>
           </tr>
         </thead>
         <tbody>${rows}</tbody>
       </table>
     </div>
+    <h2>How we pick</h2>
+    <ul class="explain">
+      <li>If more than four can play, one or two sit out.</li>
+      <li>Whoever sat out most recently gets a game.</li>
+      <li>If that is even, whoever has played fewer games gets a game.</li>
+      <li>A coin toss breaks a tie.</li>
+      <li>Can't make it means they said no. Sat out means they could play, but were not picked.</li>
+      <li>A guest plays only if fewer than four regulars are in.</li>
+    </ul>
     <h2>Past weeks</h2>
     <ul class="past">${past}</ul>
   </main>${tabs()}`;
 }
 
 function settingsHtml(view) {
-  if (!iAmAdmin()) {
-    return `<main class="wrap with-tabs">${header()}<h2>Settings</h2><p class="lead">Settings are just for Ofir.</p></main>${tabs()}`;
-  }
+  if (!iAmAdmin()) return mainHtml(view);
   if (!state.token) return `<main class="wrap with-tabs">${header()}${pinHtml()}</main>${tabs()}`;
   if (state.editWeek) return `<main class="wrap with-tabs">${header()}${fixHtml(view)}</main>${tabs()}`;
   return `<main class="wrap with-tabs">${header()}${settingsBody(view)}</main>${tabs()}`;
@@ -312,7 +340,7 @@ function fixHtml(view) {
   const options = [
     ['played', 'Played'],
     ['sat_out', 'Sat out'],
-    ['unavailable', 'Out'],
+    ['unavailable', "Can't make it"],
     ['unanswered', 'No answer'],
   ];
   const people = state.data.players.map((player) => {
@@ -331,7 +359,12 @@ function fixHtml(view) {
 }
 
 function choose(id) {
+  if (state.returnTo && state.returnTo !== id) {
+    state.token = '';
+    localStorage.removeItem('tennis.admin');
+  }
   state.me = id;
+  state.returnTo = '';
   localStorage.setItem('tennis.player', id);
   state.notice = '';
   state.error = '';
@@ -340,13 +373,18 @@ function choose(id) {
 }
 
 function changePerson() {
+  state.returnTo = state.me;
   state.me = '';
-  state.token = '';
   state.editWeek = '';
-  localStorage.removeItem('tennis.player');
-  localStorage.removeItem('tennis.admin');
-  if (location.hash) location.hash = '#coming';
-  else render();
+  state.notice = '';
+  render();
+}
+
+function backToPlayer() {
+  if (!state.returnTo) return;
+  state.me = state.returnTo;
+  state.returnTo = '';
+  render();
 }
 
 async function mark(week, status) {
@@ -391,6 +429,7 @@ async function onClick(event) {
   const action = target.dataset.action;
   if (action === 'choose') choose(target.dataset.id);
   else if (action === 'change') changePerson();
+  else if (action === 'back') backToPlayer();
   else if (action === 'refresh') load();
   else if (action === 'nav') {
     if (location.hash !== target.dataset.hash) location.hash = target.dataset.hash;
@@ -421,6 +460,29 @@ async function onClick(event) {
       state.token = '';
       localStorage.removeItem('tennis.admin');
       state.notice = 'Settings are locked.';
+    });
+  } else if (action === 'ask-guest') {
+    state.guestFor = target.dataset.week;
+    state.guestName = '';
+    render();
+  } else if (action === 'abort-guest') {
+    state.guestFor = '';
+    state.guestName = '';
+    render();
+  } else if (action === 'save-guest') {
+    const week = target.dataset.week;
+    await withPending('Saving…', async () => {
+      await api('/api/guests', { week, name: state.guestName });
+      state.guestFor = '';
+      state.guestName = '';
+      state.notice = 'Guest added.';
+      await load();
+    });
+  } else if (action === 'remove-guest') {
+    await withPending('Saving…', async () => {
+      await api('/api/guests/remove', { id: target.dataset.id });
+      state.notice = 'Guest removed.';
+      await load();
     });
   } else if (action === 'ask-cancel') {
     state.cancelFor = target.dataset.week;
@@ -491,6 +553,7 @@ function onInput(event) {
   if (target.id === 'pin') state.pinInput = target.value;
   else if (target.id === 'new-pin') state.newPin = target.value;
   else if (target.id === 'cancel-reason') state.cancelReason = target.value;
+  else if (target.id === 'guest-name') state.guestName = target.value;
 }
 
 function onKey(event) {
