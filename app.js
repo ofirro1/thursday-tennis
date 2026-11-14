@@ -171,15 +171,18 @@ function alerts() {
   ].join('');
 }
 
-function header() {
+function header({ refresh = true } = {}) {
   const name = mePlayer()?.name || '';
+  const refreshButton = refresh
+    ? `<button type="button" class="btn secondary" data-action="refresh" ${disabled()}>Refresh</button>`
+    : '';
   return `<header class="top">
     <h1>🎾 Thursday tennis</h1>
     <p class="sub">8pm at Chris's house</p>
     ${alerts()}
     <p class="who">You are <strong>${esc(name)}</strong></p>
     <button type="button" class="btn ghost" data-action="change" ${disabled()}>Not you? Change</button>
-    <button type="button" class="btn secondary" data-action="refresh" ${disabled()}>Refresh</button>
+    ${refreshButton}
   </header>`;
 }
 
@@ -238,7 +241,7 @@ function mainHtml(view) {
       ${gameOn}${meter}${you}${prompt}${banner}${controls}${lines}${guestList}${guestForm}
     </section>`;
   }).join('');
-  return `<main class="wrap with-tabs">${header()}${cards}</main>${tabs()}`;
+  return `<main class="wrap with-tabs">${header({ refresh: false })}${cards}</main>${tabs()}`;
 }
 
 function historyHtml(view) {
