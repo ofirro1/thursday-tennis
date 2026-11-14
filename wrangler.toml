@@ -1,0 +1,11 @@
+name = "thursday-tennis"
+main = "worker/index.js"
+compatibility_date = "2024-11-01"
+workers_dev = true
+
+# GitHub Actions replaces DATABASE_ID_PLACEHOLDER when it deploys.
+# The id is not a password. The database cannot be opened without the Cloudflare token.
+[[d1_databases]]
+binding = "DB"
+database_name = "thursday-tennis"
+database_id = "DATABASE_ID_PLACEHOLDER"

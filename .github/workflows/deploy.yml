@@ -1,0 +1,96 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Check Cloudflare secrets
+        id: cloud
+        env:
+          TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          ACCOUNT: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          PIN: ${{ secrets.ADMIN_PIN }}
+        run: |
+          if [ -n "$TOKEN" ] && [ -n "$ACCOUNT" ] && [ -n "$PIN" ]; then
+            echo "ready=yes" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=no" >> "$GITHUB_OUTPUT"
+            echo "Cloudflare secrets are not all set. The site will show setup steps."
+          fi
+
+      - name: Deploy the shared database
+        if: steps.cloud.outputs.ready == 'yes'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          ADMIN_PIN: ${{ secrets.ADMIN_PIN }}
+        run: |
+          set -euo pipefail
+          DB_ID="$(node scripts/ensure-db.mjs)"
+          sed -i "s/DATABASE_ID_PLACEHOLDER/${DB_ID}/" wrangler.toml
+          ok=0
+          for _ in 1 2 3 4 5; do
+            if npx --yes wrangler@3.91.0 d1 execute thursday-tennis --remote --file=schema.sql; then
+              ok=1
+              break
+            fi
+            sleep 4
+          done
+          if [ "$ok" != 1 ]; then
+            echo "Could not set up the database."
+            exit 1
+          fi
+          printf '%s' "$ADMIN_PIN" | npx --yes wrangler@3.91.0 secret put ADMIN_PIN
+          npx --yes wrangler@3.91.0 deploy | tee deploy-log.txt
+          URL="$(grep -Eo 'https://[A-Za-z0-9.-]+\.workers\.dev' deploy-log.txt | head -n 1)"
+          rm -f deploy-log.txt
+          if [ -z "$URL" ]; then
+            echo "Could not read the worker address."
+            exit 1
+          fi
+          echo "API_URL=$URL" >> "$GITHUB_ENV"
+
+      - name: Prepare the website
+        run: |
+          set -euo pipefail
+          mkdir -p _site
+          cp index.html styles.css app.js logic.js manifest.json robots.txt .nojekyll icon-180.png icon-192.png icon-512.png _site/
+          SHA="$(git rev-parse --short HEAD)"
+          sed -i "s/__VERSION__/${SHA}/g" _site/index.html _site/app.js
+          if [ -n "${API_URL:-}" ]; then
+            printf 'window.TENNIS_CONFIG = { apiUrl: "%s" };\n' "$API_URL" > _site/config.js
+          else
+            printf 'window.TENNIS_CONFIG = null;\n' > _site/config.js
+          fi
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+      - id: deployment
+        uses: actions/deploy-pages@v4
