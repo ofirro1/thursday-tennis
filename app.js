@@ -1,4 +1,10 @@
 import { projectState, recentGuestNames } from './logic.js?v=__VERSION__';
+import {
+  BROOKFIELD,
+  FORECAST_DAYS,
+  mergeForecasts,
+  weatherCredit,
+} from './weather.js?v=__VERSION__';
 
 const state = {
   me: localStorage.getItem('tennis.player') || '',
@@ -21,6 +27,14 @@ const state = {
   guestFor: '',
   guestName: '',
 };
+
+const weather = {
+  lines: {},
+  model: '',
+  checkedAt: 0,
+  ok: false,
+};
+let weatherFlight = null;
 
 const app = document.getElementById('app');
 
@@ -103,6 +117,114 @@ async function load() {
       : 'Cannot load tennis right now. Check your internet and tap Try again.';
   }
   render();
+  refreshWeather();
+}
+
+const WEATHER_OK_MS = 60 * 60 * 1000;
+const WEATHER_FAIL_MS = 15 * 60 * 1000;
+const WEATHER_KEY = 'tennis.weather';
+
+function weatherFresh() {
+  if (!weather.checkedAt) return false;
+  const limit = weather.ok ? WEATHER_OK_MS : WEATHER_FAIL_MS;
+  return Date.now() - weather.checkedAt < limit;
+}
+
+function rememberWeather() {
+  try {
+    sessionStorage.setItem(WEATHER_KEY, JSON.stringify({
+      at: weather.checkedAt,
+      ok: weather.ok,
+      model: weather.model,
+      lines: weather.lines,
+    }));
+  } catch { /* this phone may block storage */ }
+}
+
+function applyWeatherCache() {
+  try {
+    const saved = JSON.parse(sessionStorage.getItem(WEATHER_KEY) || 'null');
+    if (!saved || typeof saved.at !== 'number' || !saved.lines || typeof saved.lines !== 'object') return;
+    const lines = {};
+    for (const [key, value] of Object.entries(saved.lines)) {
+      if (/^\d{4}-\d{2}-\d{2}$/.test(key) && typeof value === 'string' && value.length < 80) lines[key] = value;
+    }
+    weather.lines = lines;
+    weather.model = typeof saved.model === 'string' ? saved.model.slice(0, 80) : '';
+    weather.checkedAt = saved.at;
+    weather.ok = !!saved.ok;
+  } catch { /* ignore a bad cache */ }
+}
+
+function forecastUrl(model) {
+  const params = new URLSearchParams({
+    latitude: String(BROOKFIELD.latitude),
+    longitude: String(BROOKFIELD.longitude),
+    hourly: 'temperature_2m,precipitation_probability,weather_code',
+    timezone: 'Australia/Brisbane',
+    forecast_days: String(FORECAST_DAYS),
+  });
+  if (model) params.set('models', model);
+  return `https://api.open-meteo.com/v1/forecast?${params}`;
+}
+
+async function fetchHourly(model) {
+  const signal = typeof AbortSignal !== 'undefined' && AbortSignal.timeout
+    ? AbortSignal.timeout(8000)
+    : undefined;
+  const response = await fetch(forecastUrl(model), { signal });
+  if (!response.ok) return null;
+  const payload = await response.json();
+  return payload && payload.hourly ? payload.hourly : null;
+}
+
+function upcomingDates() {
+  if (!state.data) return [];
+  try {
+    return model().upcoming.map((card) => card.id);
+  } catch {
+    return [];
+  }
+}
+
+function showWeatherUpdate() {
+  if (!mePlayer() || state.pending) return;
+  if (activeHash() !== '#coming') return;
+  render();
+}
+
+async function pullWeather() {
+  const dates = upcomingDates();
+  const [bom, best] = await Promise.all([
+    fetchHourly('bom_access_global').catch(() => null),
+    fetchHourly('').catch(() => null),
+  ]);
+  if (!bom && !best) {
+    weather.checkedAt = Date.now();
+    weather.ok = false;
+    return;
+  }
+  const merged = mergeForecasts(bom, best, dates);
+  const same = weather.model === merged.model
+    && JSON.stringify(weather.lines) === JSON.stringify(merged.lines);
+  weather.lines = merged.lines;
+  weather.model = merged.model;
+  weather.checkedAt = Date.now();
+  weather.ok = true;
+  rememberWeather();
+  if (!same) showWeatherUpdate();
+}
+
+function refreshWeather() {
+  if (!configured() || !state.data) return;
+  if (weatherFresh()) return;
+  if (weatherFlight) return;
+  weatherFlight = pullWeather().catch(() => {
+    weather.checkedAt = Date.now();
+    weather.ok = false;
+  }).finally(() => {
+    weatherFlight = null;
+  });
 }
 
 function render() {
@@ -236,12 +358,19 @@ function mainHtml(view) {
       <p class="meter-text">${esc(card.meter.text)}</p>
     </div>` : '';
     const gameOn = card.meter?.gameOn ? '<div class="banner in big">🎾 Game on!</div>' : '';
+    const forecast = weather.lines[card.id]
+      ? `<p class="weather">${esc(weather.lines[card.id])}</p>`
+      : '';
     return `<section class="card${index === 0 ? ' next' : ''}${card.meter?.gameOn ? ' game-on' : ''}">
       <h2>${esc(card.title)}</h2>
-      ${gameOn}${meter}${you}${prompt}${banner}${controls}${lines}${guestList}${guestForm}
+      ${forecast}${gameOn}${meter}${you}${prompt}${banner}${controls}${lines}${guestList}${guestForm}
     </section>`;
   }).join('');
-  return `<main class="wrap with-tabs">${header({ refresh: false })}${cards}</main>${tabs()}`;
+  const credit = Object.keys(weather.lines).length ? weatherCredit(weather.model) : '';
+  const note = credit
+    ? `<p class="weather-credit" data-weather-model="${esc(weather.model)}">${esc(credit)}</p>`
+    : '';
+  return `<main class="wrap with-tabs">${header({ refresh: false })}${cards}${note}</main>${tabs()}`;
 }
 
 function historyHtml(view) {
@@ -618,5 +747,6 @@ setInterval(() => {
   load();
 }, 20000);
 
+applyWeatherCache();
 render();
 if (configured()) load();

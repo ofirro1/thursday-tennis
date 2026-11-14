@@ -18,7 +18,7 @@ const TYPES = {
   '.txt': 'text/plain; charset=utf-8',
 };
 const FILES = new Set([
-  'index.html', 'styles.css', 'app.js', 'logic.js', 'manifest.json',
+  'index.html', 'styles.css', 'app.js', 'logic.js', 'weather.js', 'manifest.json',
   'robots.txt', 'icon-180.png', 'icon-192.png', 'icon-512.png',
 ]);
 
