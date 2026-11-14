@@ -144,6 +144,19 @@ h2 {
   margin: 8px 0;
 }
 
+.guest-line { font-size: 22px; font-weight: 700; }
+
+.chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0; }
+.chip {
+  min-height: 56px;
+  padding: 10px 16px;
+  border: 3px solid var(--ink);
+  border-radius: 999px;
+  background: #fff;
+  font-size: 22px;
+  font-weight: 700;
+}
+
 .card.next h2 { font-size: 32px; }
 
 .explain {

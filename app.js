@@ -1,4 +1,4 @@
-import { projectState } from './logic.js?v=__VERSION__';
+import { projectState, recentGuestNames } from './logic.js?v=__VERSION__';
 
 const state = {
   me: localStorage.getItem('tennis.player') || '',
@@ -108,6 +108,8 @@ async function load() {
 
 function render() {
   app.innerHTML = page();
+  const guestInput = document.getElementById('guest-name');
+  if (guestInput) guestInput.focus();
 }
 
 function page() {
@@ -203,18 +205,27 @@ function mainHtml(view) {
       <button type="button" class="btn choice out ${card.myStatus === 'out' ? 'on' : ''}" data-action="mark" data-week="${esc(card.id)}" data-status="out" aria-pressed="${card.myStatus === 'out'}" ${disabled()}>${card.myStatus === 'out' ? "✅ Can't make it" : "❌ Can't make it"}</button>
     </div>` : '';
     const guestList = (card.guests || []).map((guest) => `
-      <p>${esc(guest.name)} (guest)${guest.playing ? ' ✅' : ''}</p>
+      <p class="guest-line">${guest.playing ? '✅ ' : ''}${esc(guest.name)} (guest)${guest.playing ? '' : ' — not needed'}</p>
       <button type="button" class="btn secondary" data-action="remove-guest" data-id="${esc(guest.id)}" ${disabled()}>Remove ${esc(guest.name)}</button>
     `).join('');
     let guestForm = '';
     if (card.canAnswer) {
-      guestForm = state.guestFor === card.id
-        ? `<label>Guest's first name
-            <input id="guest-name" maxlength="20" autocomplete="off" autocapitalize="words" value="${esc(state.guestName)}">
+      if (state.guestFor === card.id) {
+        const chips = recentGuestNames(state.data.guests || [], card.id).map((name) => `
+          <button type="button" class="chip" data-action="chip-guest" data-week="${esc(card.id)}" data-name="${esc(name)}" ${disabled()}>${esc(name)}</button>
+        `).join('');
+        guestForm = `<div class="guest-box">
+          <p class="prompt">Someone else for this Thursday.</p>
+          ${chips ? `<div class="chips">${chips}</div>` : ''}
+          <label>First name
+            <input id="guest-name" maxlength="20" autocomplete="off" autocapitalize="words" enterkeyhint="done" value="${esc(state.guestName)}">
           </label>
-          <button type="button" class="btn" data-action="save-guest" data-week="${esc(card.id)}" ${disabled()}>Add guest</button>
-          <button type="button" class="btn secondary" data-action="abort-guest" ${disabled()}>Cancel</button>`
-        : `<button type="button" class="btn secondary" data-action="ask-guest" data-week="${esc(card.id)}" ${disabled()}>+ Add a guest</button>`;
+          <button type="button" class="btn" data-action="save-guest" data-week="${esc(card.id)}" ${disabled()}>Save</button>
+          <button type="button" class="btn secondary" data-action="abort-guest" ${disabled()}>Cancel</button>
+        </div>`;
+      } else {
+        guestForm = `<button type="button" class="btn secondary" data-action="ask-guest" data-week="${esc(card.id)}" ${disabled()}>➕ Add someone else</button>`;
+      }
     }
     return `<section class="card${index === 0 ? ' next' : ''}">
       <h2>${esc(card.title)}</h2>
@@ -469,13 +480,23 @@ async function onClick(event) {
     state.guestFor = '';
     state.guestName = '';
     render();
+  } else if (action === 'chip-guest') {
+    const week = target.dataset.week;
+    const name = target.dataset.name;
+    await withPending('Saving…', async () => {
+      await api('/api/guests', { week, name });
+      state.guestFor = '';
+      state.guestName = '';
+      state.notice = `${name} added.`;
+      await load();
+    });
   } else if (action === 'save-guest') {
     const week = target.dataset.week;
     await withPending('Saving…', async () => {
       await api('/api/guests', { week, name: state.guestName });
       state.guestFor = '';
       state.guestName = '';
-      state.notice = 'Guest added.';
+      state.notice = 'Saved.';
       await load();
     });
   } else if (action === 'remove-guest') {
@@ -557,10 +578,17 @@ function onInput(event) {
 }
 
 function onKey(event) {
-  if (event.key !== 'Enter' || event.target.id !== 'pin') return;
-  event.preventDefault();
-  const button = document.querySelector('[data-action="login"]');
-  if (button && !button.disabled) onClick({ target: button });
+  if (event.key !== 'Enter') return;
+  if (event.target.id === 'pin') {
+    event.preventDefault();
+    const button = document.querySelector('[data-action="login"]');
+    if (button && !button.disabled) onClick({ target: button });
+  }
+  if (event.target.id === 'guest-name') {
+    event.preventDefault();
+    const button = document.querySelector('[data-action="save-guest"]');
+    if (button && !button.disabled) onClick({ target: button });
+  }
 }
 
 document.addEventListener('click', (event) => {

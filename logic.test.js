@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { SEED_PLAYERS } from './seed.js';
 import {
+  recentGuestNames,
   cutoffText,
   cutoffUtc,
   closeUtc,
@@ -328,6 +329,16 @@ test('history text for a short week', () => {
   }, players);
   assert.match(text, /Short a player/);
   assert.match(text, /Ofir can't make it/);
+});
+
+test('recent guest names are one-tap chips, skipping people already on this week', () => {
+  const names = recentGuestNames([
+    { week: '2026-11-12', name: 'Meredith', createdAt: '2026-11-12T01:00:00.000Z' },
+    { week: '2026-11-05', name: 'Sam', createdAt: '2026-11-05T01:00:00.000Z' },
+    { week: '2026-10-29', name: 'Meredith', createdAt: '2026-10-29T01:00:00.000Z' },
+    { week: '2026-11-19', name: 'Sam', createdAt: '2026-11-14T01:00:00.000Z' },
+  ], '2026-11-19');
+  assert.deepEqual(names, ['Meredith']);
 });
 
 test('a guest fills a spot only when fewer than four regulars are in', () => {

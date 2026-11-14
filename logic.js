@@ -125,6 +125,23 @@ export function cutoffText(ymd) {
   return `Wednesday ${prev.getUTCDate()} ${MONTHS[prev.getUTCMonth()]}, 8pm`;
 }
 
+export function recentGuestNames(guests, weekId, limit = 4) {
+  const onThisWeek = new Set(
+    (guests || []).filter((guest) => guest.week === weekId).map((guest) => guest.name.toLowerCase()),
+  );
+  const seen = new Set();
+  const names = [];
+  const ordered = [...(guests || [])].sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
+  for (const guest of ordered) {
+    const key = String(guest.name || '').toLowerCase();
+    if (!key || onThisWeek.has(key) || seen.has(key)) continue;
+    seen.add(key);
+    names.push(guest.name);
+    if (names.length >= limit) break;
+  }
+  return names;
+}
+
 export function joinNames(names) {
   if (!names.length) return 'nobody';
   if (names.length === 1) return names[0];
@@ -412,10 +429,6 @@ function openLines(players, responses, preview) {
   if (grouped.out.length) lines.push(`Can't make it: ${joinNames(grouped.out)}`);
   if (grouped.yet.length) lines.push(`Not yet: ${joinNames(grouped.yet)}`);
   lines.push('Final four confirmed Wednesday night.');
-  for (const guest of preview.guestWaiting || []) lines.push(`${guest.name} is not needed this week.`);
-  if ((preview.guestPlaying || []).length) {
-    lines.push(`Guest playing: ${joinNames(preview.guestPlaying.map((guest) => guest.name))}.`);
-  }
   return lines;
 }
 
