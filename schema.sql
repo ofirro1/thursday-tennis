@@ -1,4 +1,6 @@
--- Shared tennis data. Safe to run more than once.
+-- Shared tennis data. Safe to run on every deploy.
+-- This file never deletes rows. It only creates a missing table,
+-- and it only inserts a starter row when that row is not already there.
 -- The six names are fixed.
 
 create table if not exists players (

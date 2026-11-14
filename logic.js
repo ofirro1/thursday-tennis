@@ -197,6 +197,19 @@ function sitReason(sitter, lastIn, past) {
   return 'a coin toss, so the same person does not always sit out';
 }
 
+export function headcount(inCount) {
+  const count = Math.max(0, inCount);
+  const filled = Math.min(count, SPOTS);
+  const need = Math.max(0, SPOTS - count);
+  const gameOn = count >= SPOTS;
+  let text;
+  if (gameOn && count === SPOTS) text = '4 of 4 — game on';
+  else if (gameOn) text = `${count} in — game on`;
+  else if (need === 1) text = `${count} of 4 — need 1 more`;
+  else text = `${count} of 4 — need ${need} more`;
+  return { count, filled, need, gameOn, text };
+}
+
 export function shortMessage(count) {
   if (count === 0) return 'Short a player this week. Nobody is in.';
   if (count === 1) return 'Short a player this week. Only 1 player is in.';
@@ -481,6 +494,7 @@ export function projectState(data, me, now) {
         banner: { tone: 'cancel', text: cancelBanner(week.cancelReason) },
         lines: [],
         guests: [],
+        meter: null,
       };
     }
     const phaseName = phase(id, now);
@@ -497,6 +511,8 @@ export function projectState(data, me, now) {
       ...result.guestPlaying.map((guest) => ({ ...guest, playing: true })),
       ...result.guestWaiting.map((guest) => ({ ...guest, playing: false })),
     ];
+    const regularsIn = players.filter((player) => week.responses[player.id] === 'in').length;
+    const meter = headcount(regularsIn + guests.length);
     if (phaseName === 'open') {
       return {
         id,
@@ -511,6 +527,7 @@ export function projectState(data, me, now) {
         banner: null,
         lines: openLines(players, week.responses, result),
         guests: guestRows,
+        meter,
       };
     }
     const onCourt = result.playing.length + result.guestPlaying.length;
@@ -527,6 +544,7 @@ export function projectState(data, me, now) {
       banner: result.short ? { tone: 'short', text: shortMessage(onCourt) } : null,
       lines: pickedLines(result, players),
       guests: guestRows,
+      meter,
     };
   });
 

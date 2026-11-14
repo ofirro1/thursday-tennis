@@ -159,6 +159,33 @@ h2 {
 
 .card.next h2 { font-size: 32px; }
 
+.card.game-on {
+  background: #e5f6ea;
+  border-color: #085727;
+}
+
+.meter { margin: 8px 0 12px; }
+.dots { display: flex; gap: 12px; }
+.dot {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  border: 4px solid #5c5648;
+  background: #fff;
+  box-sizing: border-box;
+}
+.dot.filled {
+  border-color: #085727;
+  background: radial-gradient(circle at 35% 35%, #f4ff9a, #c6e34c 55%, #7ea314);
+}
+.meter.short .meter-text { color: #6a4a12; }
+.meter.on .meter-text { color: #085727; }
+.meter-text {
+  font-size: 26px;
+  font-weight: 700;
+  margin: 10px 0 0;
+}
+
 .explain {
   margin: 0;
   padding-left: 1.3rem;

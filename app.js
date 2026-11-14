@@ -227,9 +227,14 @@ function mainHtml(view) {
         guestForm = `<button type="button" class="btn secondary" data-action="ask-guest" data-week="${esc(card.id)}" ${disabled()}>➕ Add someone else</button>`;
       }
     }
-    return `<section class="card${index === 0 ? ' next' : ''}">
+    const meter = card.meter ? `<div class="meter ${card.meter.gameOn ? 'on' : 'short'}" role="img" aria-label="${esc(card.meter.text)}">
+      <div class="dots">${[0, 1, 2, 3].map((dot) => `<span class="dot${dot < card.meter.filled ? ' filled' : ''}"></span>`).join('')}</div>
+      <p class="meter-text">${esc(card.meter.text)}</p>
+    </div>` : '';
+    const gameOn = card.meter?.gameOn ? '<div class="banner in big">🎾 Game on!</div>' : '';
+    return `<section class="card${index === 0 ? ' next' : ''}${card.meter?.gameOn ? ' game-on' : ''}">
       <h2>${esc(card.title)}</h2>
-      ${you}${prompt}${banner}${controls}${lines}${guestList}${guestForm}
+      ${gameOn}${meter}${you}${prompt}${banner}${controls}${lines}${guestList}${guestForm}
     </section>`;
   }).join('');
   const hint = state.hideHint ? '' : `<section class="hint">

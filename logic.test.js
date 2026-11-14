@@ -6,6 +6,7 @@ import {
   cutoffText,
   cutoffUtc,
   closeUtc,
+  headcount,
   historyText,
   isThursday,
   nextThursdays,
@@ -339,6 +340,36 @@ test('recent guest names are one-tap chips, skipping people already on this week
     { week: '2026-11-19', name: 'Sam', createdAt: '2026-11-14T01:00:00.000Z' },
   ], '2026-11-19');
   assert.deepEqual(names, ['Meredith']);
+});
+
+test('the counter fills four dots and says when one more is needed', () => {
+  assert.deepEqual(headcount(3), {
+    count: 3, filled: 3, need: 1, gameOn: false, text: '3 of 4 — need 1 more',
+  });
+  assert.equal(headcount(0).text, '0 of 4 — need 4 more');
+  assert.equal(headcount(4).gameOn, true);
+  assert.equal(headcount(4).text, '4 of 4 — game on');
+  assert.equal(headcount(5).text, '5 in — game on');
+  assert.equal(headcount(5).filled, 4);
+});
+
+test('guests count toward the four dots', () => {
+  const now = new Date('2026-11-14T00:00:00.000Z');
+  const view = projectState({
+    players,
+    weeks: [],
+    corrections: [],
+    responses: [
+      { week: '2026-11-19', playerId: 'chris', status: 'in' },
+      { week: '2026-11-19', playerId: 'gordon', status: 'in' },
+      { week: '2026-11-19', playerId: 'john', status: 'out' },
+    ],
+    guests: [{ id: 'g1', week: '2026-11-19', name: 'Meredith', createdAt: '2026-11-14T00:00:00.000Z' }],
+  }, 'chris', now);
+  const card = view.upcoming[0];
+  assert.equal(card.meter.count, 3);
+  assert.equal(card.meter.text, '3 of 4 — need 1 more');
+  assert.equal(card.meter.gameOn, false);
 });
 
 test('a guest fills a spot only when fewer than four regulars are in', () => {
