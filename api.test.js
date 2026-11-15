@@ -172,6 +172,52 @@ test('any player can add and remove a guest for one Thursday', async () => {
   assert.equal(after.body.guests.length, 0);
 });
 
+test('weather is cached for an hour and a failed refresh keeps the last forecast', async () => {
+  const store = createStore();
+  await store.upsertResponse('gordon', '2026-11-19', 'in', NOW.toISOString());
+  const before = await bodyOf(await call(store, '/api/state'));
+  let calls = 0;
+  const loadForecast = async () => {
+    calls += 1;
+    return { lines: { '2026-11-19': '☁️ 8pm: 2% chance of rain, 19°' }, model: 'best_match' };
+  };
+  const first = await bodyOf(await handleApi(new Request('http://local/api/weather'), {
+    store,
+    bootstrapPin: PIN,
+    now: () => NOW,
+    loadForecast,
+  }));
+  assert.equal(first.status, 200);
+  assert.equal(first.body.fetchedAt, NOW.toISOString());
+  assert.match(first.body.lines['2026-11-19'], /8pm/);
+  assert.equal(first.body.model, 'best_match');
+  assert.equal(calls, 1);
+
+  const cached = await bodyOf(await handleApi(new Request('http://local/api/weather'), {
+    store,
+    bootstrapPin: PIN,
+    now: () => new Date(NOW.getTime() + 20 * 60 * 1000),
+    loadForecast,
+  }));
+  assert.equal(cached.body.fetchedAt, NOW.toISOString());
+  assert.equal(calls, 1);
+
+  const kept = await bodyOf(await handleApi(new Request('http://local/api/weather'), {
+    store,
+    bootstrapPin: PIN,
+    now: () => new Date(NOW.getTime() + 2 * 60 * 60 * 1000),
+    loadForecast: async () => { throw new Error('down'); },
+  }));
+  assert.equal(kept.status, 200);
+  assert.equal(kept.body.fetchedAt, NOW.toISOString());
+  assert.equal(kept.body.lines['2026-11-19'], first.body.lines['2026-11-19']);
+
+  const after = await bodyOf(await call(store, '/api/state'));
+  assert.deepEqual(after.body.responses, before.body.responses);
+  assert.deepEqual(after.body.players, before.body.players);
+  assert.deepEqual(after.body.corrections, before.body.corrections);
+});
+
 async function login(store) {
   const response = await bodyOf(await call(store, '/api/admin/login', {
     method: 'POST',

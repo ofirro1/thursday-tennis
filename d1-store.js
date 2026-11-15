@@ -111,5 +111,19 @@ export function createD1Store(db) {
     async deleteExpiredSessions(nowIso) {
       await db.prepare('delete from sessions where expires_at <= ?').bind(nowIso).run();
     },
+    async getWeatherCache() {
+      const row = await db.prepare('select lines, model, fetched_at from weather_cache where id = 1').first();
+      if (!row) return null;
+      let lines = {};
+      try { lines = JSON.parse(row.lines); } catch { lines = {}; }
+      if (!lines || typeof lines !== 'object' || Array.isArray(lines)) lines = {};
+      return { lines, model: row.model || '', fetchedAt: row.fetched_at };
+    },
+    async saveWeatherCache(cache) {
+      await db.prepare(
+        `insert into weather_cache (id, lines, model, fetched_at) values (1, ?, ?, ?)
+         on conflict(id) do update set lines = excluded.lines, model = excluded.model, fetched_at = excluded.fetched_at`,
+      ).bind(JSON.stringify(cache.lines || {}), cache.model || '', cache.fetchedAt).run();
+    },
   };
 }

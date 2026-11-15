@@ -20,8 +20,9 @@ export function createStore(saved) {
   data.weeks ||= [];
   data.corrections ||= [];
   data.guests ||= [];
-  data.sessions ||= [];
-  data.attempts ||= {};
+    data.sessions ||= [];
+    data.attempts ||= {};
+    if (!Object.prototype.hasOwnProperty.call(data, 'weatherCache')) data.weatherCache = null;
 
   return {
     dump() {
@@ -101,6 +102,16 @@ export function createStore(saved) {
     },
     async deleteExpiredSessions(nowIso) {
       data.sessions = data.sessions.filter((row) => row.expiresAt > nowIso);
+    },
+    async getWeatherCache() {
+      return data.weatherCache ? structuredClone(data.weatherCache) : null;
+    },
+    async saveWeatherCache(cache) {
+      data.weatherCache = {
+        lines: { ...cache.lines },
+        model: cache.model || '',
+        fetchedAt: cache.fetchedAt,
+      };
     },
   };
 }

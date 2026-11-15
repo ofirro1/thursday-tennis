@@ -1,3 +1,5 @@
+import { brisbaneParts } from './logic.js';
+
 // 8pm forecast for the game at Chris's house in Brookfield, Queensland.
 // Nominatim places the suburb at -27.4948, 152.9115 (postcode 4069).
 export const BROOKFIELD = {
@@ -7,6 +9,9 @@ export const BROOKFIELD = {
 };
 
 export const FORECAST_DAYS = 7;
+export const WEATHER_CACHE_MS = 60 * 60 * 1000;
+
+const SHORT_DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
 const EVENING_HOURS = [20, 19, 21];
 
@@ -111,10 +116,121 @@ export function mergeForecasts(bomHourly, bestHourly, dates) {
   return { lines, sources, model };
 }
 
-export function weatherCredit(model) {
+export function forecastRequestUrl(model) {
+  const params = new URLSearchParams({
+    latitude: String(BROOKFIELD.latitude),
+    longitude: String(BROOKFIELD.longitude),
+    hourly: 'temperature_2m,precipitation_probability,weather_code,is_day',
+    timezone: 'Australia/Brisbane',
+    forecast_days: String(FORECAST_DAYS),
+  });
+  if (model) params.set('models', model);
+  return `https://api.open-meteo.com/v1/forecast?${params}`;
+}
+
+async function readHourly(fetchImpl, model) {
+  try {
+    const signal = typeof AbortSignal !== 'undefined' && AbortSignal.timeout
+      ? AbortSignal.timeout(8000)
+      : undefined;
+    const response = await fetchImpl(forecastRequestUrl(model), { signal });
+    if (!response || !response.ok) return null;
+    const payload = await response.json();
+    return payload && payload.hourly ? payload.hourly : null;
+  } catch {
+    return null;
+  }
+}
+
+// BOM first. For any Thursday it does not cover, use Open-Meteo's usual forecast.
+// Returns null when both requests fail, so the caller can keep the last good cache.
+export async function loadOpenMeteo(dates, fetchImpl = globalThis.fetch) {
+  const wanted = Array.isArray(dates) ? dates : [];
+  const bom = await readHourly(fetchImpl, 'bom_access_global');
+  const covered = mergeForecasts(bom, null, wanted);
+  const missing = wanted.filter((date) => !covered.lines[date]);
+  const best = missing.length || !bom ? await readHourly(fetchImpl, '') : null;
+  if (!bom && !best) return null;
+  const merged = mergeForecasts(bom, best, wanted);
+  if (!merged.model) return null;
+  return { lines: merged.lines, model: merged.model };
+}
+
+export async function cachedForecast({ store, now, dates, load }) {
+  const cached = await store.getWeatherCache();
+  const cachedAt = Date.parse(cached?.fetchedAt || '');
+  const fresh = cached && Number.isFinite(cachedAt) && now.getTime() - cachedAt < WEATHER_CACHE_MS;
+  if (fresh) return cached;
+  let next = null;
+  try {
+    next = await load(dates);
+  } catch {
+    next = null;
+  }
+  if (next && next.lines && next.model) {
+    const saved = {
+      lines: next.lines,
+      model: next.model,
+      fetchedAt: now.toISOString(),
+    };
+    await store.saveWeatherCache(saved);
+    return saved;
+  }
+  if (cached) return cached;
+  return { lines: {}, model: '', fetchedAt: null };
+}
+
+// Keep a phone's last good lines. A failed fetch does not blank them.
+// A date is removed only after it is no longer on the coming-up list.
+export function keepForecast(previous, incoming, upcoming) {
+  const allowed = new Set(upcoming || []);
+  const prior = previous && typeof previous === 'object' ? previous : {};
+  const lines = {};
+  for (const [date, line] of Object.entries(prior.lines || {})) {
+    if (allowed.has(date) && typeof line === 'string' && line.length > 0 && line.length < 80) lines[date] = line;
+  }
+  const fresh = incoming
+    && typeof incoming.fetchedAt === 'string'
+    && incoming.fetchedAt
+    && incoming.lines
+    && typeof incoming.lines === 'object';
+  if (!fresh) {
+    return {
+      lines,
+      model: typeof prior.model === 'string' ? prior.model : '',
+      fetchedAt: typeof prior.fetchedAt === 'string' ? prior.fetchedAt : '',
+    };
+  }
+  for (const [date, line] of Object.entries(incoming.lines)) {
+    if (allowed.has(date) && typeof line === 'string' && line.length > 0 && line.length < 80) lines[date] = line;
+  }
+  return {
+    lines,
+    model: typeof incoming.model === 'string' && incoming.model ? incoming.model : (prior.model || ''),
+    fetchedAt: incoming.fetchedAt,
+  };
+}
+
+export function formatUpdatedAt(fetchedAt, now) {
+  const when = new Date(fetchedAt);
+  if (!fetchedAt || Number.isNaN(when.getTime())) return '';
+  const clockNow = now instanceof Date ? now : new Date(now);
+  const fetched = brisbaneParts(when);
+  const today = brisbaneParts(clockNow);
+  const hour = fetched.hh % 12 || 12;
+  const minute = String(fetched.mm).padStart(2, '0');
+  const suffix = fetched.hh < 12 ? 'am' : 'pm';
+  const clock = `${hour}:${minute}${suffix}`;
+  if (fetched.y === today.y && fetched.m === today.m && fetched.d === today.d) return clock;
+  return `${SHORT_DAYS[fetched.dow]} ${clock}`;
+}
+
+export function weatherCredit(model, fetchedAt, now) {
   if (!model) return '';
   const source = String(model).includes('bom_access_global')
     ? 'Open-Meteo / BOM model, Brookfield'
     : 'Open-Meteo, Brookfield';
-  return `Updates automatically · ${source}`;
+  const when = formatUpdatedAt(fetchedAt, now || new Date());
+  if (!when) return source;
+  return `Updated ${when} · ${source}`;
 }

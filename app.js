@@ -1,10 +1,6 @@
 import { projectState, recentGuestNames } from './logic.js?v=__VERSION__';
-import {
-  BROOKFIELD,
-  FORECAST_DAYS,
-  mergeForecasts,
-  weatherCredit,
-} from './weather.js?v=__VERSION__';
+import { keepForecast, weatherCredit } from './weather.js?v=__VERSION__';
+import { shouldReload } from './version.js?v=__VERSION__';
 
 const state = {
   me: localStorage.getItem('tennis.player') || '',
@@ -31,10 +27,16 @@ const state = {
 const weather = {
   lines: {},
   model: '',
-  checkedAt: 0,
-  ok: false,
+  fetchedAt: '',
 };
 let weatherFlight = null;
+let weatherAttemptAt = 0;
+let versionCheckAt = 0;
+const WEATHER_POLL_MS = 12 * 60 * 1000;
+const VERSION_POLL_MS = 3 * 60 * 1000;
+const WEATHER_KEY = 'tennis.weather';
+const RELOAD_KEY = 'tennis.reloadedFor';
+const BUILD_VERSION = document.querySelector('meta[name="tennis-version"]')?.getAttribute('content') || '';
 
 const app = document.getElementById('app');
 
@@ -116,66 +118,32 @@ async function load() {
       ? 'Could not refresh. These answers may be old.'
       : 'Cannot load tennis right now. Check your internet and tap Try again.';
   }
+  pruneWeather();
   render();
-  refreshWeather();
-}
-
-const WEATHER_OK_MS = 60 * 60 * 1000;
-const WEATHER_FAIL_MS = 15 * 60 * 1000;
-const WEATHER_KEY = 'tennis.weather.v2';
-
-function weatherFresh() {
-  if (!weather.checkedAt) return false;
-  const limit = weather.ok ? WEATHER_OK_MS : WEATHER_FAIL_MS;
-  return Date.now() - weather.checkedAt < limit;
 }
 
 function rememberWeather() {
   try {
-    sessionStorage.setItem(WEATHER_KEY, JSON.stringify({
-      at: weather.checkedAt,
-      ok: weather.ok,
-      model: weather.model,
+    localStorage.setItem(WEATHER_KEY, JSON.stringify({
       lines: weather.lines,
+      model: weather.model,
+      fetchedAt: weather.fetchedAt,
     }));
   } catch { /* this phone may block storage */ }
 }
 
 function applyWeatherCache() {
   try {
-    const saved = JSON.parse(sessionStorage.getItem(WEATHER_KEY) || 'null');
-    if (!saved || typeof saved.at !== 'number' || !saved.lines || typeof saved.lines !== 'object') return;
+    const saved = JSON.parse(localStorage.getItem(WEATHER_KEY) || 'null');
+    if (!saved || !saved.lines || typeof saved.lines !== 'object') return;
     const lines = {};
     for (const [key, value] of Object.entries(saved.lines)) {
       if (/^\d{4}-\d{2}-\d{2}$/.test(key) && typeof value === 'string' && value.length < 80) lines[key] = value;
     }
     weather.lines = lines;
     weather.model = typeof saved.model === 'string' ? saved.model.slice(0, 80) : '';
-    weather.checkedAt = saved.at;
-    weather.ok = !!saved.ok;
+    weather.fetchedAt = typeof saved.fetchedAt === 'string' ? saved.fetchedAt : '';
   } catch { /* ignore a bad cache */ }
-}
-
-function forecastUrl(model) {
-  const params = new URLSearchParams({
-    latitude: String(BROOKFIELD.latitude),
-    longitude: String(BROOKFIELD.longitude),
-    hourly: 'temperature_2m,precipitation_probability,weather_code,is_day',
-    timezone: 'Australia/Brisbane',
-    forecast_days: String(FORECAST_DAYS),
-  });
-  if (model) params.set('models', model);
-  return `https://api.open-meteo.com/v1/forecast?${params}`;
-}
-
-async function fetchHourly(model) {
-  const signal = typeof AbortSignal !== 'undefined' && AbortSignal.timeout
-    ? AbortSignal.timeout(8000)
-    : undefined;
-  const response = await fetch(forecastUrl(model), { signal });
-  if (!response.ok) return null;
-  const payload = await response.json();
-  return payload && payload.hourly ? payload.hourly : null;
 }
 
 function upcomingDates() {
@@ -187,6 +155,23 @@ function upcomingDates() {
   }
 }
 
+function applyKeptForecast(incoming) {
+  if (!state.data) return;
+  const next = keepForecast(weather, incoming, upcomingDates());
+  const same = weather.model === next.model
+    && weather.fetchedAt === next.fetchedAt
+    && JSON.stringify(weather.lines) === JSON.stringify(next.lines);
+  weather.lines = next.lines;
+  weather.model = next.model;
+  weather.fetchedAt = next.fetchedAt;
+  rememberWeather();
+  if (!same) showWeatherUpdate();
+}
+
+function pruneWeather() {
+  applyKeptForecast(null);
+}
+
 function showWeatherUpdate() {
   if (!mePlayer() || state.pending) return;
   if (activeHash() !== '#coming') return;
@@ -194,37 +179,50 @@ function showWeatherUpdate() {
 }
 
 async function pullWeather() {
-  const dates = upcomingDates();
-  const [bom, best] = await Promise.all([
-    fetchHourly('bom_access_global').catch(() => null),
-    fetchHourly('').catch(() => null),
-  ]);
-  if (!bom && !best) {
-    weather.checkedAt = Date.now();
-    weather.ok = false;
-    return;
+  let payload = null;
+  try {
+    payload = await api('/api/weather');
+  } catch {
+    payload = null;
   }
-  const merged = mergeForecasts(bom, best, dates);
-  const same = weather.model === merged.model
-    && JSON.stringify(weather.lines) === JSON.stringify(merged.lines);
-  weather.lines = merged.lines;
-  weather.model = merged.model;
-  weather.checkedAt = Date.now();
-  weather.ok = true;
-  rememberWeather();
-  if (!same) showWeatherUpdate();
+  applyKeptForecast(payload);
 }
 
-function refreshWeather() {
+function refreshWeather(force = false) {
   if (!configured() || !state.data) return;
-  if (weatherFresh()) return;
+  if (!force && weatherAttemptAt && Date.now() - weatherAttemptAt < WEATHER_POLL_MS) return;
   if (weatherFlight) return;
-  weatherFlight = pullWeather().catch(() => {
-    weather.checkedAt = Date.now();
-    weather.ok = false;
-  }).finally(() => {
+  weatherAttemptAt = Date.now();
+  weatherFlight = pullWeather().finally(() => {
     weatherFlight = null;
   });
+}
+
+async function checkVersion() {
+  versionCheckAt = Date.now();
+  if (state.pending) return;
+  if (!BUILD_VERSION || BUILD_VERSION === 'dev' || BUILD_VERSION === '__VERSION__') return;
+  let remote = '';
+  try {
+    const response = await fetch(`version.json?t=${Date.now()}`, { cache: 'no-store' });
+    if (!response.ok) return;
+    const payload = await response.json();
+    remote = String(payload.version || '');
+  } catch {
+    return;
+  }
+  let already = '';
+  try { already = sessionStorage.getItem(RELOAD_KEY) || ''; } catch { already = ''; }
+  if (!shouldReload({ build: BUILD_VERSION, remote, already, pending: state.pending })) {
+    if (remote && remote === BUILD_VERSION) {
+      try { sessionStorage.removeItem(RELOAD_KEY); } catch { /* ignore */ }
+    }
+    return;
+  }
+  try { sessionStorage.setItem(RELOAD_KEY, remote); } catch { /* still reload once */ }
+  const url = new URL(location.href);
+  url.searchParams.set('v', remote);
+  location.replace(url.toString());
 }
 
 function render() {
@@ -358,7 +356,7 @@ function mainHtml(view) {
       <p class="meter-text">${esc(card.meter.text)}</p>
     </div>` : '';
     const gameOn = card.meter?.gameOn ? '<div class="banner in big">🎾 Game on!</div>' : '';
-    const note = weather.lines[card.id] ? weatherCredit(weather.model) : '';
+    const note = weather.lines[card.id] ? weatherCredit(weather.model, weather.fetchedAt, clock()) : '';
     const forecast = weather.lines[card.id]
       ? `<div class="weather-block">
           <p class="weather">${esc(weather.lines[card.id])}</p>
@@ -739,14 +737,26 @@ window.addEventListener('hashchange', () => {
   else render();
 });
 document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'visible' && configured() && state.data && activeHash() !== '#settings') load();
+  if (document.visibilityState !== 'visible') return;
+  if (configured() && state.data && activeHash() !== '#settings') load();
+  refreshWeather(true);
+  checkVersion();
 });
 setInterval(() => {
   if (!configured() || !state.data || state.pending) return;
-  if (activeHash() === '#settings') return;
-  load();
+  if (activeHash() !== '#settings') load();
+  if (Date.now() - weatherAttemptAt >= WEATHER_POLL_MS) refreshWeather();
+  if (Date.now() - versionCheckAt >= VERSION_POLL_MS) {
+    versionCheckAt = Date.now();
+    checkVersion();
+  }
 }, 20000);
 
 applyWeatherCache();
 render();
-if (configured()) load();
+if (configured()) {
+  load().finally(() => {
+    refreshWeather(true);
+    checkVersion();
+  });
+}

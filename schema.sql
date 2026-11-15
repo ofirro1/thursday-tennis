@@ -74,3 +74,11 @@ create table if not exists sessions (
   token text primary key,
   expires_at text not null
 );
+
+-- Shared forecast only. This does not store answers, names, or history.
+create table if not exists weather_cache (
+  id integer primary key check (id = 1),
+  lines text not null,
+  model text not null default '',
+  fetched_at text not null
+);

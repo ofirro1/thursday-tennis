@@ -77,9 +77,10 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p _site
-          cp index.html styles.css app.js logic.js weather.js manifest.json robots.txt .nojekyll icon-180.png icon-192.png icon-512.png _site/
+          cp index.html styles.css app.js logic.js weather.js version.js manifest.json robots.txt .nojekyll icon-180.png icon-192.png icon-512.png _site/
           SHA="$(git rev-parse --short HEAD)"
           sed -i "s/__VERSION__/${SHA}/g" _site/index.html _site/app.js
+          printf '{"version":"%s"}\n' "$SHA" > _site/version.json
           if [ -n "${API_URL:-}" ]; then
             printf 'window.TENNIS_CONFIG = { apiUrl: "%s" };\n' "$API_URL" > _site/config.js
           else

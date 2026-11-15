@@ -1,4 +1,5 @@
 import { isThursday, nextThursdays, phase } from './logic.js';
+import { cachedForecast, loadOpenMeteo } from './weather.js';
 import { hashPin, pinsMatch, randomHex } from './pin.js';
 
 const OUTCOMES = new Set(['played', 'sat_out', 'unavailable', 'unanswered']);
@@ -196,12 +197,26 @@ async function removeGuest(body, store) {
   return { ok: true };
 }
 
-export async function handleApi(request, { store, bootstrapPin = '', now = () => new Date() }) {
+export async function handleApi(request, { store, bootstrapPin = '', now = () => new Date(), loadForecast } = {}) {
   if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: corsHeaders() });
   const url = new URL(request.url);
   const clock = now();
   try {
     if (url.pathname === '/api/health' && request.method === 'GET') return json({ ok: true });
+    if (url.pathname === '/api/weather' && request.method === 'GET') {
+      const dates = nextThursdays(clock, 4);
+      const forecast = await cachedForecast({
+        store,
+        now: clock,
+        dates,
+        load: loadForecast || ((wanted) => loadOpenMeteo(wanted)),
+      });
+      return json({
+        lines: forecast.lines || {},
+        model: forecast.model || '',
+        fetchedAt: forecast.fetchedAt || null,
+      });
+    }
     if (url.pathname === '/api/state' && request.method === 'GET') {
       const state = await store.getState();
       return json({ ...state, serverTime: clock.toISOString() });
